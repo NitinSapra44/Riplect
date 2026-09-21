@@ -1,0 +1,62 @@
+: Inline Payment Proof Submission (Events & Products)
+What We're Building
+After a user registers for a paid event or requests to purchase a product, instead of sending them to the guest portal to submit payment proof, they land on a dedicated "Complete Your Payment" page — still on the Riplek site — where they can upload the proof right away. If they skip it, they can still do it later from the guest portal.
+
+The Short Answer
+This is straightforward to build. The backend infrastructure is 100% already there. This is purely a frontend job — one new page, one new reusable component, and small wiring changes in two existing components.
+
+What Already Exists (Nothing to Build Here)
+Everything on the backend is already in place:
+WhatWhereUpload payment proof imagePOST /api/guest/:token/upload-payment-proofSubmit proof for event registrationPOST /api/guest/:token/registrations/:id/mark-paidSubmit proof for product purchasePOST /api/guest/:token/purchases/:id/mark-paidFetch registration/purchase detailsGET /api/guest/:token (returns full data)Image compression utilityclient/src/lib/imageCompression.tsFull proof upload UI logicAlready in guest-portal.tsx (to be extracted)
+The guestAccessToken is already returned in both the event registration response and the product purchase-request response — so the new page already has everything it needs to make API calls.
+
+What Needs to Be Built
+1. New Page: complete-payment.tsx
+Route: /complete-payment?token=XXX&type=registration&id=123
+or /complete-payment?token=XXX&type=purchase&id=456
+This is a standalone public page (no auth required) that:
+
+Reads token, type, and id from URL query params
+Calls GET /api/guest/:token to fetch the registration or purchase details
+Shows the event/product name, price, and payment instructions from the coach
+Renders the payment proof upload form (see component below)
+Has a "Skip for now — I'll pay later" link that goes to /guest/:token
+After successful submission, shows a confirmation with a link to the guest portal
+
+States to handle:
+
+Loading (fetching data)
+Already submitted (proof_uploaded / verified) — show a "already done" message
+Ready to submit — show the upload form
+Error (invalid token, not found)
+
+
+2. New Reusable Component: PaymentProofUpload
+The upload logic already exists in guest-portal.tsx but is tightly coupled to that page's state. This needs to be extracted into a self-contained component that can live on the new page.
+It accepts:
+accessToken: string
+type: 'registration' | 'purchase'
+id: number
+paymentInstruction?: string
+paymentMethodsOffered?: array
+onSuccess?: callback
+Internally it handles:
+
+Image file selection + 5MB validation
+Image compression via existing compressImage() utility
+Upload to /api/guest/:token/upload-payment-proof
+Optional reference text (e.g. UPI transaction ID)
+Optional proof URL (paste-in alternative to image)
+Payment method selector (if coach offers multiple methods)
+Submitting to the appropriate mark-paid endpoint
+Success / error states
+
+This component can also be dropped into the guest portal later to replace the duplicated logic there.
+
+3. Small Change: event-registration-modal.tsx
+Currently after a successful registration, the modal shows a success screen with a "Manage Registration" link to the guest portal.
+The change needed: if the event requiresPayment is true and we have a guestAccessToken, navigate to the complete-payment page instead of (or right after) showing the success screen.
+Two viable approaches:
+
+Auto-redirect — registration succeeds → immediately navigate to /complete-payment?.... Clean, matches the "moment they register, they go to the page" requirement.
+B

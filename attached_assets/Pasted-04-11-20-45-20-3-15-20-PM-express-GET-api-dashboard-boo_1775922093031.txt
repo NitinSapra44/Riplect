@@ -1,0 +1,48 @@
+04-11 20:45:20
+3:15:20 PM [express] GET /api/dashboard/bookings 304 in 2307ms :: [{"id":77,"sessionId":22,"profileI…
+04-11 20:45:22
+3:15:22 PM [express] GET /api/dashboard/profile 304 in 827ms :: {"id":"3751312c-2d01-4514-acfd-7b4be…
+04-11 20:45:23
+3:15:23 PM [express] GET /api/dashboard/profile 304 in 821ms :: {"id":"3751312c-2d01-4514-acfd-7b4be…
+04-11 20:45:25
+3:15:25 PM [express] GET /api/dashboard/profile 304 in 830ms :: {"id":"3751312c-2d01-4514-acfd-7b4be…
+04-11 20:45:25
+3:15:25 PM [express] GET /api/dashboard/profile 304 in 838ms :: {"id":"3751312c-2d01-4514-acfd-7b4be…
+04-11 20:45:26
+3:15:26 PM [express] GET /api/dashboard/profile 304 in 843ms :: {"id":"3751312c-2d01-4514-acfd-7b4be…
+04-11 20:45:32
+3:15:32 PM [express] GET /api/dashboard/payment-settings 200 in 829ms :: {"coachId":"3751312c-2d01-4…
+04-11 20:45:33
+3:15:33 PM [express] GET /api/dashboard/bookings/77/events 200 in 1327ms :: [{"id":116,"bookingId":7…
+04-11 20:45:34
+3:15:34 PM [express] GET /api/dashboard/bookings/77/messages 200 in 2416ms :: []
+04-11 20:45:49
+at file:///home/runner/workspace/dist/index.js:6644:27
+04-11 20:45:49
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+04-11 20:45:49
+at file:///home/runner/workspace/dist/index.js:6:9
+04-11 20:45:49
+Error verifying payment: Error: Dynamic require of "crypto" is not supported
+04-11 20:45:49
+3:15:49 PM [express] POST /api/dashboard/products/purchases/15/verify-payment 500 in 1905ms :: {"mes…
+04-11 20:45:54
+at file:///home/runner/workspace/dist/index.js:6:9
+04-11 20:45:54
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+04-11 20:45:54
+at file:///home/runner/workspace/dist/index.js:6644:27
+04-11 20:45:54
+Error verifying payment: Error: Dynamic require of "crypto" is not supported
+04-11 20:45:54
+3:15:54 PM [express] POST /api/dashboard/products/purchases/15/verify-payment 500 in 1851ms :: {"mes…
+04-11 20:45:57
+3:15:57 PM [express] GET /api/dashboard/products/purchases 304 in 1313ms :: [{"id":15,"productId":11…
+04-11 20:45:59
+3:15:59 PM [express] GET /api/dashboard/profile 304 in 827ms :: {"id":"3751312c-2d01-4514-acfd-7b4be…
+04-11 20:46:00
+3:16:00 PM [express] GET /api/dashboard/bookings/77/messages 304 in 1866ms :: []
+04-11 20:46:02
+3:16:02 PM [express] GET /api/dashboard/event-registrations 304 in 1827ms :: {"eventGroups":[{"event…
+04-11 20:46:02
+3:16:02

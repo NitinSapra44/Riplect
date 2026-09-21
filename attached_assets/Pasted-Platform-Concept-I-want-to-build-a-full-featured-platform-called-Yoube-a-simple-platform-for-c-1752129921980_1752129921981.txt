@@ -1,0 +1,51 @@
+Platform Concept:
+I want to build a full-featured platform called "Yoube" — a simple platform for coaches, healers, mentors, freelancers, and small creators. Each user can create a personal profile page where they showcase their identity, offer services, sell digital and physical products, post events, write blog articles, and receive bookings — all from one link.
+
+Please help me build this in phases, one feature at a time. Use Node.js + Express for the backend. For views, use EJS templates. Use Replit DB or JSON for data storage. Make the code simple and organized, and explain each file/folder.
+All features will be all visible on the public profile page as buttons that expands once clicked on.
+🔹 Features I want to include (All features will be all visible on the public profile page as buttons that expands once clicked on.):
+
+1. A profile page at /username that includes:
+   - Profile picture, name, short bio
+   - Social media icons (Instagram, YouTube, WhatsApp, etc.)
+   - A section to add custom external links
+   - Photo gallery (6-9 pictures)
+
+2. A booking calendar:
+   - Let users define their available days/times
+   - Visitors can book a session
+   - Booking confirmation should appear
+   - Stripe or Razorpay integration for payment
+   - Manual Google Meet link 
+
+3. A digital product store:
+   - Users can upload PDFs, videos, images
+   - Add title, description, price
+   - After payment, the file is delivered
+
+4. A physical product shop:
+   - Users can add product photos, descriptions, prices
+   - (Optional) stock or quantity
+   - Accept orders (use form + payment)
+
+5. Blog system:
+   - Users can write blog posts with image, title, and content
+   - Blogs are listed 
+   - Blog viewer page for each post
+
+6. Events & Workshops:
+   - Users can create upcoming events with details and ticket price
+   - Visitors can register and pay
+   - Event shows in a section on the profile
+
+7. QR code for each profile:
+   - Automatically generate QR code linking to user profile
+   - Display on dashboard
+   - Let users download as PNG
+
+8. Dashboard:
+   - User login (can be simple at first)
+   - Manage profile, products, blog, calendar, events, QR
+   - Clean and mobile-friendly
+
+📌 Start by helping me create a clean folder and file structure for this platform using Express, EJS, and Replit DB. Then help me build one feature at a time, beginning with user profile creation and viewing at /username.

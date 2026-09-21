@@ -1,0 +1,17 @@
+
+UX Gaps
+8. No "Needs Action" definition
+The plan says the Events tab badge shows "count of pending registrations needing attention" but never defines what that means. Developers will guess. Define it explicitly:
+
+For paid events: registrant where paymentStatus = 'pending' and event is in the future
+For online events: confirmed registrants where meetingLink is null and event is within 48h
+(Optionally) New registrations created in the last 24h (to give coaches visibility)
+
+9. No confirmation page after registration
+The flow ends at sending a confirmation email. There is no in-browser confirmation state — the guest submits the form and presumably the modal closes, but what do they see? Even a simple "You're registered! Check your email for confirmation code [EVT-ABC123]" screen makes a massive difference to perceived reliability. Without it, guests will re-submit thinking it didn't work.
+10. No "Add to Calendar" anywhere
+Event registrants universally expect an "Add to Calendar" option. This is a one-line ICS file generation — trivially cheap to build — but if it's not in the plan it won't get built. It belongs on the confirmation page and in the confirmation email.
+11. The payment instructions banner on registration is described but the empty state isn't
+What does a paid event look like if the coach forgot to write payment instructions? "Payment required — " with nothing after it. The UI and the backend should require paymentInstructions to be non-empty if isFree = false, both on form submit and in the guest-facing display.
+12. Recurring events are silently unhandled
+Your events schema already supports recurring events with parentEventId. The plan shows a "Draft" status badge in the Events tab, but recurring events add a real complication: does a guest register for one instance or the whole series? Does the coach see registrations per-instance or rolled up? Not scoping this explicitly means the developer will make a random decision. Even if recurring event registration is out of scope for v1, the plan should explicitly say what happens when a coach tries to register an event that's part of a series.

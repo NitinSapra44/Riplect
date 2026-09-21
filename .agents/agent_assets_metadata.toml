@@ -1,0 +1,26 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "_hkY_ho7LFOjuloU-u7ja"
+uri = "file://artifacts/mockup-sandbox/public/images/journey-hero-bg.png"
+type = "image"
+title = "Soft terracotta gradient abstract background"
+
+[[generated]]
+id = "0I0sFSY_QIDiK-yBqQn8p"
+uri = "file://artifacts/mockup-sandbox/public/images/session-breathwork.png"
+type = "image"
+title = "Breathwork session abstract art"
+
+[[generated]]
+id = "r3zSfW04pLi1cXalcG4ZX"
+uri = "file://artifacts/mockup-sandbox/public/images/session-somatic.png"
+type = "image"
+title = "Somatic healing session art"
+
+[[generated]]
+id = "nFGIMImkEIF1iJRLGiyLl"
+uri = "file://artifacts/mockup-sandbox/public/images/session-meditation.png"
+type = "image"
+title = "Meditation course abstract art"

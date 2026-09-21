@@ -1,0 +1,106 @@
+attached is the code base of my website
+We want to build the below feature into the web apps, dashboard page. But the problem is that the dashbaord page is already really heavy code with all of sublayers
+and now adding this booking feature, might really make the page even more slow to load, respond etc
+What is the best way to implement the below bookings feature into the dashboard somewhere or maybe as a popup/ drawer or any other creative idea you have so that is in not inherently a part of the dashboard code/ page but a different independent componenet altogether that can be accessed from the dashboard page
+
+Booking Inbox (overview)
+Think Gmail / Linear / Stripe dashboard.
+Purpose:
+
+Answer “what needs my attention?”
+Not “show everything”
+Views / Filters
+
+Needs action
+Pending confirmation
+Reschedule requested
+Cancellation request
+Upcoming (next 7 days)
+Past
+Cancelled / Completed
+Each row shows:
+
+Guest name
+Session name
+When booked
+Scheduled time
+Current state (human-readable)
+Action indicator (⚠️ needs response)
+
+
+Booking Detail Page (this is the real product)
+Both confirm booking and decline should have a popup for itself, ( reason for decline)
+Clicking a booking opens a full-page (or drawer) session view.
+This replaces 80% of current complexity.
+Booking Detail Structure
+A. Session Snapshot (top)
+
+Guest name + contact
+Session title
+Scheduled date & time (with timezone clarity)
+Status (confirmed / pending / reschedule requested/cancelled/ rescheduled/ declined)
+Payment state (paid / pending / offline)
+user message to coach
+
+
+Timeline -  it should also be the Guest booking page
+This is the killer feature.
+A vertical timeline like:
+
+Booking created
+Payment completed
+Coach confirmed
+Guest requested reschedule
+Coach proposed new time
+Session completed
+Feedback sent
+Declined by coach
+session cancelled by user
+Why this matters:
+
+Explains why status is what it is
+Eliminates ambiguity
+Makes support + audits easy
+Enables automation later
+
+
+Actions (contextual, not global)
+Actions change based on state.
+Examples:
+
+Before confirmation:
+Confirm booking
+Propose alternate time
+Cancel session
+After confirmation:
+Request reschedule
+Cancel (with reason)
+Message guest
+After completion:
+Mark completed
+Send follow-up / feedback
+Notes (private)
+
+
+
+Communication Thread (lightweight)
+Not full chat. Just session-specific messages.
+
+“Coach requested reschedule”
+“Guest accepted new time”
+“System sent reminder email”
+This bridges:
+
+coach actions
+guest actions
+system emails
+
+Email is not a feature — it’s a side-effect
+Key rule:
+Email should reflect state, not drive it
+Meaning:
+
+Every important state change → timeline event
+Timeline event → email / WhatsApp / notification
+Coach never wonders:
+“Did the email go?”
