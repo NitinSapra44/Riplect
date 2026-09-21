@@ -1,0 +1,84 @@
+`★ Insight ─────────────────────────────────────`
+- SSE connections use Node.js `http.ServerResponse` objects stored in-memory. Unlike WebSockets, SSE is one-way and unidirectional — the server pushes, the client listens. The critical nuance here is that `Set.forEach` mutation is safe per the JS spec (deleted items that haven't been visited yet are still skipped), but it's considered a code smell since behavior differs between `forEach`, `for...of`, and iterators.
+- The `null` vs `undefined` distinction in Drizzle ORM is a subtle but important API design: `undefined` in a `.set({})` call means "omit this column from the UPDATE", while `null` generates `SET col = NULL`. This is the opposite of TypeScript's typical usage where both often mean "no value".
+`─────────────────────────────────────────────────`
+
+Here's the full code review of the Replit agent's changes. I found **2 critical bugs**, **5 important issues**, and **3 quality issues**:
+
+---
+
+## Critical Issues
+
+### 1. Syntax Error — Single `/` Comment (routes.ts:157)
+**This will crash the server.**
+```js
+/ In-memory map: coachId -> list of active SSE response streams  // ← missing second slash
+```
+Should be `// In-memory map: ...`
+
+### 2. Set Mutation During `forEach` (routes.ts:164–169) — Memory Leak
+```js
+clients.forEach(res => {
+  try { res.write(payload); } catch { clients.delete(res); } // unsafe mutation
+});
+```
+The fix:
+```js
+const dead: Response[] = [];
+clients.forEach(res => {
+  try { res.write(payload); } catch { dead.push(res); }
+});
+dead.forEach(r => clients.delete(r));
+```
+
+### 3. SSE `req.on('error')` Missing — Zombie Connections
+The SSE handler handles `req.on('close')` but not `req.on('error')`. A socket-level error won't clean up the client from the map, leaving dead references forever.
+
+---
+
+## Important Issues
+
+### 4. `guestPortalUrl` Not HTML-Escaped in Emails (emailService.ts)
+`contactUrl` is escaped with `escapeHtml()` before being embedded in `href` attributes, but `guestPortalUrl` is not. Low risk today (token is random hex), but inconsistent and fragile.
+
+### 5. Raw 12h `bookingTime` Sent in SSE Payload (routes.ts:3114)
+```js
+notifyCoach(profileId, { bookingTime, ... }) // ← client-supplied 12h string, not normalized
+```
+The stored record uses `bookingTime24`, but the toast shows the raw string. Minor inconsistency but noticeable.
+
+### 6. Shadowed `dayOfWeek` Variable in `booking-section.tsx:280`
+```js
+const dayOfWeek = date.getDay(); // outer
+...
+const dayOfWeek = date.getDay(); // ← re-declared, shadows outer (redundant)
+```
+Dead code that TypeScript's `noShadow` rule would catch.
+
+### 7. Timezone Bug in `getBookedSlotsForSession` (storage.ts:765)
+```js
+conditions.push(sql`DATE(${bookings.bookingDate}) >= CURRENT_DATE`);
+```
+`CURRENT_DATE` uses DB server timezone (UTC). A coach in UTC+8 seeing Thursday night could have "Friday" bookings treated as future, while their Friday slots appear bookable. Not urgent but worth noting.
+
+### 8. Drizzle Null-Clearing Reschedule Fields May Be Fragile (routes.ts:5113)
+Setting `rescheduledFrom: null` works in Drizzle only if the schema column is nullable (it is), and only if `null` is passed rather than `undefined`. Worth verifying with a runtime test that reschedule fields actually get cleared to `NULL` on decline.
+
+---
+
+## Quality Issues
+
+### 9. 5s Polling with `refetchIntervalInBackground: true` on Guest Portal
+Both queries poll every 5 seconds even when the tab is backgrounded. A guest leaving the tab open for hours will hammer the server continuously. Consider 30s background interval + `refetchOnWindowFocus: true` for good UX without the load.
+
+### 10. `deepLinkHandled` Ref Never Resets (booking-panel.tsx:45)
+Once a deep-link navigation fires, `deepLinkHandled.current = true` is permanent for the component's lifetime. If `initialBookingId` changes (e.g., navigation to a different booking URL), the new ID will be silently ignored.
+
+### 11. Missing `useEffect` Deps in `useCoachNotifications.tsx`
+`queryClient` and `toast` are captured in the SSE `useEffect` but not listed as dependencies. React's `exhaustive-deps` lint rule flags this. Harmless in practice (both are stable references) but should be clean.
+
+---
+
+## Bottom Line
+
+The **syntax error on routes.ts:157** must be fixed first — it will prevent compilation. The **Set mutation during `forEach`** (issue #2) is the most impactful runtime bug for a long-running server. Issues 3–8 are real bugs worth addressing before shipping. Want me to go ahead and fix these?

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Riplect - Discover coaches, mentors, healers, and creators who can help you achieve your goals. Book sessions, attend events, and connect with experts." />
+    <meta name="theme-color" content="#b66667" />
+    
+    <!-- Google Fonts - Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Preconnect to critical origins for faster resource loading -->
+    <link rel="preconnect" href="https://jaogzivtujplcvrafhzb.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://jaogzivtujplcvrafhzb.supabase.co" />
+    
+    <!-- Open Graph tags for social sharing -->
+    <meta property="og:title" content="Riplect - Creator Platform" />
+    <meta property="og:description" content="Discover coaches, mentors, healers, and creators who can help you achieve your goals." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://riplek.com" />
+    
+    <title>Riplect - Creator Platform</title>
+    
+    <!-- Critical CSS inlined for instant first paint - prevents render blocking -->
+    <style>
+      /* Critical CSS for immediate first paint */
+      :root {
+        --background: hsl(0, 0%, 100%);
+        --foreground: hsl(20, 14.3%, 4.1%);
+        --primary: #b66667;
+        --muted: hsl(0, 0%, 96%);
+      }
+      
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      
+      html {
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      
+      body {
+        min-height: 100vh;
+        background-color: #FDF6EE;
+        background-image: linear-gradient(to bottom, #ffffff, #FDF6EE);
+        background-attachment: fixed;
+        color: var(--foreground);
+      }
+      
+      #root {
+        min-height: 100vh;
+      }
+      
+      /* Loading state shown before React hydrates */
+      .initial-loader {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      
+      .initial-loader-spinner {
+        width: 2.5rem;
+        height: 2.5rem;
+        border: 3px solid var(--muted);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      
+      .initial-loader-text {
+        color: var(--primary);
+        font-size: 1.5rem;
+        font-weight: 600;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      /* Hide loader once React has mounted */
+      #root:not(:empty) + .initial-loader,
+      #root:has(*) ~ .initial-loader {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    
+    <!-- Initial loader shown while JS loads - prevents perceived blank screen -->
+    <div class="initial-loader" aria-label="Loading application">
+      <div class="initial-loader-spinner"></div>
+      <div class="initial-loader-text">Riplect</div>
+    </div>
+    
+    <!-- Main app entry with modulepreload for faster loading -->
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Replit dev banner - async to prevent render blocking, only loads in dev -->
+    <script>
+      if (window.location.hostname.includes('repl') || window.location.hostname === 'localhost') {
+        var s = document.createElement('script');
+        s.src = 'https://replit.com/public/js/replit-dev-banner.js';
+        s.async = true;
+        document.body.appendChild(s);
+      }
+    </script>
+  </body>
+</html>

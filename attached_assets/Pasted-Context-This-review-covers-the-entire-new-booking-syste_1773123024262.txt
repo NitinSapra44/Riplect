@@ -1,0 +1,190 @@
+Context
+This review covers the entire new booking system introduced in the booking-cancellation-reschedule branch, including: booking creation, guest portal, coach booking inbox/detail, payment proof upload/verify/reject, reschedule, cancellation, and email notifications. The review identified 28 issues across severity levels.
+
+CRITICAL Issues (Fix Immediately)
+C1. Race Condition: Payment Verify/Reject Use Unconditional Updates
+Files: server/storage.ts:2051-2067 (updateBookingPaymentVerified), server/storage.ts:2068-2082 (updateBookingPaymentRejected)
+Both methods update the booking without checking current paymentStatus in the WHERE clause. The route handler checks paymentStatus === 'proof_uploaded' at routes.ts:4658 and routes.ts:4771, but there's a TOCTOU (time-of-check-time-of-use) gap between the check and the actual update.
+Scenario: Coach A clicks "Verify" and Coach B clicks "Reject" simultaneously. Both pass the if check, then both updates execute. The last write wins, leaving the booking in an inconsistent state (e.g., verified but with a rejection event in the timeline).
+Fix: Add and(eq(bookings.id, bookingId), eq(bookings.paymentStatus, 'proof_uploaded')) to the WHERE clause in both updateBookingPaymentVerified and updateBookingPaymentRejected, and return null if no rows updated (same pattern as updateBookingConditional).
+
+C2. Race Condition: updateBookingProofUploaded Has No Conditional Check
+File: server/storage.ts:2032-2049
+The updateBookingProofUploaded method unconditionally sets paymentStatus = 'proof_uploaded'. The route checks paymentStatus !== 'requested' at routes.ts:4540, but:
+* A guest can call mark-paid twice quickly, overwriting their first proof URL
+* If a coach verifies payment between the check and the update, the booking reverts to proof_uploaded
+Fix: Add a WHERE condition paymentStatus = 'requested' to the storage method.
+
+C3. Timezone Bug in getHoursUntilBooking() — Incorrect Comparison
+File: server/routes.ts:109-127
+This function constructs two date strings and parses them with new Date():
+
+
+Line 111: const bookingDtStr = `${dateStr}T${bookingTime}:00`;
+Line 123: const bookingMs = new Date(bookingDtStr).getTime();
+Line 124: const nowMs = new Date(nowInCoachTzStr).getTime();
+Bug 1: bookingTime may be in 12-hour format (e.g., "2:30 PM") — the frontend sends 12h and the value is stored as-is. If so, "2024-03-10T2:30 PM:00" is an invalid date string and new Date() returns NaN. The 24-hour check silently fails, potentially allowing last-minute cancellations.
+Bug 2: Even with 24h format, both strings lack timezone info. new Date("2024-03-10T14:00:00") is parsed as local server time (or UTC depending on runtime), not coach timezone. The nowInCoachTzStr is formatted in coach TZ but parsed as local. If the server's local timezone differs from the coach's timezone, the comparison is wrong.
+Fix: Normalize bookingTime to 24h format first. Then either use dateTimeToUTC() from timezone-utils (server-side equivalent) or parse both timestamps in a timezone-aware way using Intl.DateTimeFormat.
+
+C4. No Double-Booking Prevention
+File: server/routes.ts:2691-2877 (booking creation endpoint)
+The booking creation endpoint does zero checks for conflicting bookings. Two guests can book the same session at the exact same date/time, and both will succeed. There is no database UNIQUE constraint on (sessionId, bookingDate, bookingTime) either.
+Fix: Before inserting a new booking, query for existing non-cancelled bookings at the same sessionId + bookingDate + bookingTime. Alternatively, add a partial unique index in the database.
+
+HIGH Issues (Fix Before Release)
+H1. Reschedule Allows Transition From Terminal States
+File: server/routes.ts:3266-3268
+Guest reschedule only blocks status === 'cancelled'. A guest can reschedule a declined or completed booking:
+
+
+typescript
+if (booking.status === 'cancelled') {  // Only checks cancelled!
+  return res.status(400).json({ message: "Cannot reschedule a cancelled booking" });
+}
+Fix: Block all terminal states: cancelled, declined, completed.
+
+H2. Reschedule Resets Status to pending Without Considering Payment
+File: server/routes.ts:3286-3292
+When a guest reschedules a confirmed booking, status becomes pending but paymentStatus remains verified. This creates a contradictory state — the booking was paid and confirmed, but is now pending again.
+Fix: Define clear business rules for reschedule + payment interaction. Options:
+* Keep confirmed status and flag as reschedule_requested instead
+* \
+
+H3. Decline Endpoint Uses Non-Conditional Update
+File: server/routes.ts:4861-4866
+The decline endpoint checks booking.status !== 'pending' at line 4857, but uses plain updateBooking() instead of updateBookingConditional(). Same TOCTOU issue as the payment endpoints.
+Fix: Use updateBookingConditional() with expectedStatus: 'pending'.
+
+H4. Guest Portal Access Token is Equivalent to Full Authorization
+File: client/src/pages/guest-portal.tsx:561, server/routes.ts:3136
+The accessToken in the URL is the only authentication for all guest operations (view bookings, cancel, reschedule, send messages, upload payment proof). If leaked (browser history, shared link, referrer header), anyone can:
+* View all of the guest's bookings across all coaches
+* Cancel or reschedule bookings
+* Send messages as the guest
+* Upload fraudulent payment proof
+Mitigation options:
+* Add a secondary verification (email OTP or magic link) for destructive actions
+* Set short TTL on access tokens and require re-authentication
+* At minimum: add SameSite, Secure headers and ensure tokens aren't logged
+
+H5. Confirmation Code Not Cryptographically Secure
+File: server/routes.ts:2708
+
+
+typescript
+const confirmationCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+Math.random() is not cryptographically secure. With only 6 alphanumeric chars (~2 billion possibilities), brute-forcing is feasible. The confirmation code is used in GET /api/bookings/:confirmationCode to retrieve booking details.
+Fix: Use crypto.randomBytes(6).toString('hex').toUpperCase() (12 hex chars = 16^12 possibilities).
+
+H6. No Input Validation on Booking Creation
+File: server/routes.ts:2691-2728
+The booking creation endpoint does no validation on:
+* clientEmail — no email format check
+* clientName — no length check, could be empty string
+* totalAmount — no check that it matches the session's actual price (guest can submit totalAmount: "0" for a paid session)
+* bookingDate — no check that the date is in the future
+* bookingTime — no check that this time slot is actually available
+* sessionId — no check that the session exists or belongs to the profileId
+Fix: Add validation for all fields. Most critically: verify totalAmount matches the session price server-side, and verify the date/time slot is available.
+
+H7. No Rate Limiting on Payment Proof Upload
+File: server/routes.ts:4491-4522
+The upload endpoint accepts 5MB files with no rate limiting. A malicious guest could upload thousands of files rapidly, exhausting Supabase storage.
+Fix: Add rate limiting (e.g., max 5 uploads per booking per hour).
+
+MEDIUM Issues
+M1. Non-Atomic Multi-Step Operations
+Files: server/routes.ts:2728-2772 (booking creation), server/routes.ts:4557-4593 (mark-paid)
+Multiple database operations (create booking, create event, create message) are not wrapped in a transaction. If the server crashes between operations, the booking exists without its events, or payment status changes without the corresponding event.
+Fix: Wrap related operations in a database transaction using Drizzle's transaction API.
+
+M2. dateTimeToUTC() Uses Approximate Month/Year Math
+File: client/src/lib/timezone-utils.ts:365-385
+The iterative offset calculation uses approximations:
+
+
+typescript
+(month - inTz.month) * 30 * 24 * 60  // Assumes 30-day months
+(year - inTz.year) * 365 * 24 * 60   // Assumes 365-day years
+This can fail on month/year boundaries (e.g., converting times near Jan 1 or month transitions where the approximation diverges enough to prevent convergence in 3 iterations).
+Fix: Calculate exact millisecond differences instead of approximations. Or use Date.UTC() arithmetic directly.
+
+M3. Default Time Slots Shown When No Availability Set
+File: client/src/pages/session-detail.tsx:112-118
+When a coach has no availability configured, the UI shows default slots (9AM-8PM). Guests can book these times even though the coach never specified they're available.
+Fix: Show "No availability set by the coach" instead of default time slots.
+
+M4. Missing bookingId Validation (parseInt Injection)
+Files: Multiple routes using parseInt(bookingId) or parseInt(id)
+parseInt("123abc") returns 123. While not a SQL injection risk (Drizzle parameterizes), it's sloppy. parseInt("") returns NaN, which could cause unexpected behavior in queries.
+Fix: Validate that the ID is a positive integer before processing.
+
+M5. Email Failures Are Silently Swallowed
+Files: server/routes.ts:2811, 3236, 3368, etc.
+All email sends are wrapped in try-catch blocks that only log errors. If the confirmation email to the guest fails, they receive no notification about their booking. The coach has no way to know the email failed.
+Fix: At minimum, store email delivery status on the booking. Consider a retry queue for failed emails.
+
+M6. Guest Cancel Error Handler Doesn't Show Server Error Message
+File: client/src/pages/guest-portal.tsx:602-604
+
+
+typescript
+onError: () => {
+  toast({ title: "Error", description: "Failed to cancel booking. Please try again.", variant: "destructive" });
+},
+The 24-hour restriction returns a specific error message, but the frontend ignores it and shows a generic error. The guest doesn't know why it failed.
+Fix: Parse the error response body and display the server's message (e.g., "Cancellations must be made at least 24 hours before the session").
+
+M7. Stale UI After Mutations
+File: client/src/pages/guest-portal.tsx:595-600
+After cancellation, setCancelDialogOpen(false) executes immediately after invalidateQueries, before the refetch completes. The booking card briefly shows the old status.
+Fix: Use await queryClient.invalidateQueries(...) and wait for the refetch, or use optimistic updates.
+
+LOW Issues
+L1. No UNIQUE Constraint on confirmationCode
+File: shared/schema.ts:326
+The confirmationCode column has notNull() but no unique constraint. With the weak random generation (C5), collisions become a real possibility at scale.
+Fix: Add .unique() to the schema and a DB migration.
+
+L2. Payment Methods JSONB Has No Schema Validation
+File: shared/schema.ts:354-368
+The methods JSONB field accepts arbitrary objects. If a coach's payment settings contain malicious strings, they could appear unsanitized in emails or the guest portal.
+Fix: Validate payment method objects with Zod or similar before storage.
+
+L3. Google Calendar URL Doesn't Sanitize Coach Name
+File: client/src/pages/guest-portal.tsx:224-245
+Coach display name is embedded in the calendar URL without sanitization. A malicious display name with special characters could break the URL or inject parameters.
+Fix: Use encodeURIComponent() on all user-provided values in the URL.
+
+L4. Refetch Interval Creates Unnecessary Background Traffic
+Files: guest-portal.tsx:588, booking-inbox.tsx:153
+30-second polling on every tab creates steady background requests even when the user isn't looking at the page.
+Fix: Use refetchOnWindowFocus: true instead, or reduce polling frequency. Consider refetchIntervalInBackground: false.
+
+L5. Inconsistent Time Format Between Frontend and Backend
+Files: session-detail.tsx:199 (sends 12h), routes.ts:2720 (stores as-is), routes.ts:111 (constructs with assumed 24h)
+The bookingTime field has no standardized format. The frontend sends "2:30 PM" format, the backend stores it as-is, and getHoursUntilBooking() assumes 24h "14:30" format. This inconsistency is the root cause of C3.
+Fix: Standardize on 24h format. Convert to 24h in the booking creation endpoint before storage, or enforce 24h format on the frontend submission.
+
+L6. Missing declined State Handling in Guest Portal UI
+File: client/src/pages/guest-portal.tsx
+The guest portal renders booking status badges but may not handle the declined status gracefully in terms of which actions are shown/hidden.
+Fix: Audit the UI to ensure declined bookings hide reschedule/cancel/pay buttons.
+
+Summary
+Severity	Count	Key Theme
+CRITICAL	4	Race conditions in payment, timezone bugs, double-booking
+HIGH	7	Incomplete state guards, missing validation, weak auth
+MEDIUM	7	Non-atomic ops, approximate math, silent failures
+LOW	6	Missing constraints, format inconsistency, UX polish
+Recommended Fix Order
+1. C3 + L5 (timezone/time format) — Root cause issue, affects cancellation/reschedule safety
+2. C1 + C2 (race conditions) — Add conditional WHERE clauses to payment storage methods
+3. C4 (double-booking) — Add slot conflict check in booking creation
+4. H1 + H2 (reschedule state machine) — Block terminal states, define payment interaction
+5. H3 (decline conditional) — Quick fix, same pattern as existing code
+6. H6 (input validation) — Server-side price/date/time validation
+7. H5 (confirmation code) — Replace Math.random with crypto
+8. M1 (transactions) — Wrap multi-step DB ops in transactions
+9. Remaining medium/low issues in order of severity

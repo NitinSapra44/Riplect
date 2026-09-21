@@ -1,0 +1,30 @@
+Context
+After publishing the Booking-cancellation-reschedule branch, the site gets stuck on the loading spinner. The root cause is a stale dependency array bug in RequireOnboardingComplete introduced in this branch — specifically, location was added to the useEffect dep array, causing an unintended re-execution loop that prevents navigation from completing.
+
+Root Cause
+File: client/src/components/onboarding-guard.tsx — line 53
+typescript// BUG: `location` is in deps but not used in the effect body
+}, [isAuthenticated, isLoading, onboardingCompleted, setLocation, location]);
+When an unauthenticated user visits /dashboard:
+
+Auth resolves → isAuthenticated = false
+Component renders <PageLoading /> (line 59-61)
+Effect fires → calls setLocation("/auth")
+Wouter updates location → effect re-fires (because location is in deps)
+Effect calls setLocation("/auth") again → rapid re-execution cycle
+React processes rapid state updates → navigation never completes → stuck on <PageLoading />
+
+Compare with OnboardingGuard (same file, line 20) which correctly does NOT have location in its deps.
+
+Fix
+File to modify: client/src/components/onboarding-guard.tsx
+Remove location from the RequireOnboardingComplete effect's dependency array:
+typescript// BEFORE (line 53):
+}, [isAuthenticated, isLoading, onboardingCompleted, setLocation, location]);
+
+// AFTER:
+}, [isAuthenticated, isLoading, onboardingCompleted, setLocation]);
+location is not read inside the effect body (the effect only reads window.location.pathname + window.location.search directly, not the Wouter location hook value) — so removing it is both correct and sufficient.
+
+Secondary Issue (Lower Priority)
+The location variable IS destructured from useLocation() at line 35 but only passed into the effect via the dep array — it's never used in the effect body itself. The const [location, setLocation] = useLocation(); can stay since location might be used elsewhere in the component (it isn't currently, but removing it from deps is enough).
