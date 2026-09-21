@@ -1,0 +1,1 @@
+- [Image upload compression](image-upload-compression.md) — all image uploaders must compressImage() before POST or large phone photos stall mid-transfer; add an XHR timeout too.

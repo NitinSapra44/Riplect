@@ -1,0 +1,80 @@
+Onboarding is the universal verification gateway. Whichever credential the user signed up with is pre-filled and trusted; the other credential is collected and verified during onboarding. By the time onboarding ends, every user has both a verified email and a verified phone on the same auth.user, and from then on can log in through either channel — plus Google if their email is Google-managed.
+The redesigned contact page is the single screen where this happens. It always shows two fields (phone, email); the one the user came in through is pre-filled and locked with a ✓; the other is empty and required to finish onboarding.
+
+Flow A — Email-first signup (regular email + password)
+
+User signs up with email + password on /auth (existing flow; email magic-link verification as today).
+Lands in onboarding. On the contact step:
+
+Email: pre-filled, locked, shown as ✓ verified.
+Phone: empty, required.
+
+
+User enters phone → "Send OTP" → 6-digit OTP via WhatsApp/SMS → verify.
+Phone is attached to the same auth.user via Supabase identity-linking; profile's phone_e164 is set so the WhatsApp bot will recognise them next time they message.
+Continue onboarding → dashboard.
+Going forward: logs in with email+password OR phone+OTP.
+
+
+Flow B — Email-first signup (Google login)
+
+User clicks "Continue with Google" → Google OAuth (email auto-verified by Google).
+Lands in onboarding. Contact step:
+
+Email: pre-filled, locked, ✓ verified via Google.
+Phone: empty, required.
+
+
+Phone OTP step, identical to Flow A.
+Continue onboarding → dashboard.
+Going forward: logs in with Google OR phone+OTP.
+
+
+Flow C — Phone-first signup → user provides a Google email
+Entry can be either (a) the WhatsApp bot handing off via the login link it already sends, or (b) phone+OTP directly on a new website login surface. Both land in the same state.
+
+User authenticates with phone+OTP. The auth.user already exists (created by the bot) with a placeholder email like +91xxxxx@whatsapp.riplect.app.
+Lands in onboarding. Contact step:
+
+Phone: pre-filled, locked, ✓ verified.
+Email: empty, required.
+
+
+User types their email. System detects a Google-managed domain (gmail.com or any Workspace domain — detect via OIDC discovery on the domain).
+Inline prompt: "This looks like a Google account — verify in one click." → Google OAuth popup.
+On success, the backend does three things atomically:
+
+Email swap — replaces the placeholder on the auth.user with the real Google email (supabase.auth.admin.updateUserById).
+Identity link — attaches the Google identity to the same auth.user.
+Marks email as verified.
+
+
+Toast: "You can now sign in with Google directly." Continue onboarding → dashboard.
+Going forward: logs in with phone+OTP OR Google. No password is ever needed.
+
+
+Flow D — Phone-first signup → user provides a regular (non-Google) email
+
+Same start as Flow C: auth.user exists with a placeholder email.
+Onboarding contact step: phone pre-filled & verified, email empty.
+User types email. Domain is not Google-managed.
+Inline state changes to: "We've sent a verification link to [email]. Open it to finish setup." The contact step is now in a "waiting for verification" state — they can't advance until the link is clicked.
+Verification email is sent, containing a one-time signed link.
+Link opens a new page — /verify-email-and-set-password (this is the new page in your spec):
+
+Shows the email being verified at the top.
+Two fields: New password / Confirm password.
+Submit button.
+
+
+On submit, the backend does atomically:
+
+Email swap — placeholder replaced with the real email.
+Password set on the auth.user.
+Email marked as verified.
+A fresh session is issued and the user is auto-logged-in.
+
+
+The page then bounces them back into onboarding exactly where they left off (resume by next_step token; if the original tab is still open it can detect the verification via Supabase auth state change and skip ahead automatically).
+Continue onboarding → dashboard.
+Going forward: logs in with phone+OTP OR email+password.

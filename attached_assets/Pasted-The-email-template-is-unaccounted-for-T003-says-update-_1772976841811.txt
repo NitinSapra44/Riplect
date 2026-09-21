@@ -1,0 +1,18 @@
+The email template is unaccounted for
+T003 says "update email to guest: if structured methods, list them" but there's no task for actually updating the email template. The existing sendBookingConfirmedToClient has a paymentInfo param designed for a single method. It now needs to render a list of methods — each with their details, per-method instructions, and formatting for different types (UPI ID, bank details, PayPal link, etc.). This needs to be an explicit task or T003 will hand off incomplete work to the email layer.
+Also worth specifying: if UPI methods have a qr_code_url, should the email embed it inline? That's a significant UX win for Indian coaches and guests, and Replit won't add it unless you ask.
+
+T005 is missing the proof upload mechanism — again
+The mark-paid flow in T005/T006 still doesn't specify how proof is actually submitted. Is it a file upload (image), a text reference, or both? The guest portal UI needs to handle this concretely — a file input for screenshot, plus an optional reference/note field. Without this spec, Replit will improvise something inconsistent with the backend. The payment_proof_url column exists in the DB from Phase 1, but nothing in this plan explains how a URL gets there.
+
+paymentInstruction repurposing creates naming confusion
+Previously paymentInstruction stored the auto-generated instructions for the chosen method (Path A). Now it's being repurposed to store freeform custom instructions (Path B only). Any code that reads paymentInstruction from old bookings will misinterpret it as custom freeform text. Either rename the column to custom_payment_instruction, or add a comment in the storage layer clearly documenting the column's new-only meaning and how to handle legacy rows.
+
+Booking messages need to list actual method details, not just "Payment requested"
+T003 says the auto-message will say "Payment requested" generically. But the guest receives this message in the booking inbox and needs to know where to send money — especially if they're not reading email carefully. The message should list all enabled methods with their key details (UPI ID, PayPal link, etc.) the same way the email does. Otherwise the message is useless.
+
+Rejected state leaves guest unable to switch methods
+When a coach rejects a proof (from the previous review's rejected state task, which presumably still applies), the guest portal re-enables the submission form. But payment_methods_offered is still set from the original request — so the guest can switch to a different method and re-submit, which is actually correct. Just make sure T005 doesn't disable method selection after a first submission. The radio selection should be re-editable any time payment_status is requested or rejected.
+
+T007 should show the offered method's details, not just the type
+When a coach sees paymentMethodSelected: "upi" after proof is uploaded, they should also see the UPI ID that was offered (from paymentMethodsOffered) so they can cross-check their transaction history. Just displaying "Guest paid via UPI" without the ID makes manual verification harder. The coach detail view should pull the matching method object from paymentMethodsOffered using the paymentMethodSelected key and display its details alongside the proof.

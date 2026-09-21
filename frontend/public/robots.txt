@@ -1,0 +1,25 @@
+# Riplek - Robots.txt
+# https://riplek.com
+
+User-agent: *
+
+# Allow public pages
+Allow: /
+Allow: /discover
+Allow: /discover/*
+
+# Block private/authenticated areas
+Disallow: /dashboard
+Disallow: /dashboard/*
+Disallow: /settings
+Disallow: /settings/*
+Disallow: /onboarding
+Disallow: /onboarding/*
+Disallow: /api/
+Disallow: /auth/
+
+# Block utility pages
+Disallow: /404
+
+# Sitemap location
+Sitemap: https://riplek.com/sitemap.xml

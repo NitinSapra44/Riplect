@@ -1,0 +1,164 @@
+2026-04-13 20:32:03.88
+12325c22
+User
+3:02:03 PM [express] GET /api/dashboard/profile 304 in 799ms :: {"id":"3751312c-2d01-4514-acfd-7b4be…
+2026-04-13 20:32:04.45
+12325c22
+User
+3:02:04 PM [express] GET /api/dashboard/products/purchases 304 in 1338ms :: [{"id":16,"productId":11…
+2026-04-13 20:32:05.96
+12325c22
+User
+3:02:05 PM [express] GET /api/dashboard/event-registrations 304 in 2835ms :: {"eventGroups":[{"event…
+2026-04-13 20:32:11.58
+12325c22
+User
+3:02:11 PM [express] GET /api/dashboard/bookings 304 in 8453ms :: [{"id":245,"sessionId":73,"profile…
+2026-04-13 20:32:11.62
+12325c22
+User
+3:02:11 PM [express] GET /api/tags/popular 304 in 4383ms :: [{"id":1,"name":"yoga","slug":"yoga","ca…
+2026-04-13 20:32:11.62
+12325c22
+User
+3:02:11 PM [express] GET /api/tags/search 304 in 4385ms :: [{"id":1,"name":"yoga","slug":"yoga","cat…
+2026-04-13 20:32:11.67
+12325c22
+User
+3:02:11 PM [express] GET /api/profiles/3751312c-2d01-4514-acfd-7b4be17711c7/tags 304 in 4432ms :: []
+2026-04-13 20:32:11.72
+12325c22
+User
+3:02:11 PM [express] GET /api/auth/user 304 in 4472ms :: {"id":"3751312c-2d01-4514-acfd-7b4be17711c7…
+2026-04-13 20:32:12.55
+12325c22
+User
+Delete account request - userId: 3751312c-2d01-4514-acfd-7b4be17711c7
+2026-04-13 20:32:15.09
+12325c22
+User
+position: '13',
+2026-04-13 20:32:15.09
+12325c22
+User
+at ErrorResponse (file:///home/runner/workspace/node_modules/postgres/src/connection.js:815:30)
+2026-04-13 20:32:15.09
+12325c22
+User
+at handle (file:///home/runner/workspace/node_modules/postgres/src/connection.js:489:6)
+2026-04-13 20:32:15.09
+12325c22
+User
+Error deleting account: PostgresError: relation "session_reviews" does not exist
+2026-04-13 20:32:15.09
+12325c22
+User
+}
+2026-04-13 20:32:15.09
+12325c22
+User
+severity: 'ERROR',
+2026-04-13 20:32:15.09
+12325c22
+User
+at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+2026-04-13 20:32:15.09
+12325c22
+User
+at TLSWrap.onStreamRead (node:internal/stream_base_commons:191:23) {
+2026-04-13 20:32:15.09
+12325c22
+User
+code: '42P01',
+2026-04-13 20:32:15.09
+12325c22
+User
+at Readable.push (node:internal/streams/readable:392:5)
+2026-04-13 20:32:15.09
+12325c22
+User
+line: '1449',
+2026-04-13 20:32:15.09
+12325c22
+User
+at TLSSocket.data (file:///home/runner/workspace/node_modules/postgres/src/connection.js:324:9)
+2026-04-13 20:32:15.09
+12325c22
+User
+at addChunk (node:internal/streams/readable:561:12)
+2026-04-13 20:32:15.09
+12325c22
+User
+routine: 'parserOpenTable'
+2026-04-13 20:32:15.09
+12325c22
+User
+position: '13',
+2026-04-13 20:32:15.09
+12325c22
+User
+at ErrorResponse (file:///home/runner/workspace/node_modules/postgres/src/connection.js:815:30)
+2026-04-13 20:32:15.09
+12325c22
+User
+at handle (file:///home/runner/workspace/node_modules/postgres/src/connection.js:489:6)
+2026-04-13 20:32:15.09
+12325c22
+User
+Error deleting account: PostgresError: relation "session_reviews" does not exist
+2026-04-13 20:32:15.09
+12325c22
+User
+}
+2026-04-13 20:32:15.09
+12325c22
+User
+severity: 'ERROR',
+2026-04-13 20:32:15.09
+12325c22
+User
+at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+2026-04-13 20:32:15.09
+12325c22
+User
+at TLSWrap.onStreamRead (node:internal/stream_base_commons:191:23) {
+2026-04-13 20:32:15.09
+12325c22
+User
+code: '42P01',
+2026-04-13 20:32:15.09
+12325c22
+User
+at Readable.push (node:internal/streams/readable:392:5)
+2026-04-13 20:32:15.09
+12325c22
+User
+line: '1449',
+2026-04-13 20:32:15.09
+12325c22
+User
+at TLSSocket.data (file:///home/runner/workspace/node_modules/postgres/src/connection.js:324:9)
+2026-04-13 20:32:15.09
+12325c22
+User
+at addChunk (node:internal/streams/readable:561:12)
+2026-04-13 20:32:15.09
+12325c22
+User
+routine: 'parserOpenTable'
+2026-04-13 20:32:15.09
+12325c22
+User
+file: 'parse_relation.c',
+2026-04-13 20:32:15.09
+12325c22
+User
+at TLSSocket.emit (node:events:524:28)
+2026-04-13 20:32:15.09
+12325c22
+User
+severity_local: 'ERROR',
+2026-04-13 20:32:15.09
+12325c22
+User
+3:02:15 PM [express] DELETE /api/dashboard/delete-account 500 in 3397ms :: {"message":"Failed to del…

@@ -1,0 +1,63 @@
+Context
+When users click "Manage Your Booking" links in emails (guest portal) or coaches click dashboard links, pages sometimes get stuck in an infinite loading spinner. This is a recurring issue. Root cause analysis reveals two fetch calls in the initialization chain have no timeout, meaning if the server is slow or a connection drops mid-request, the loading state never resolves.
+Root Cause (Traced Through Code)
+The Initialization Chain That Hangs Everything
+client/src/lib/supabase.ts — initSupabase() (line 14)
+typescriptconst response = await fetch('/api/config/supabase');  // ← NO TIMEOUT
+This fetch has no timeout. initPromise is set to this async function. waitForSupabase() awaits initPromise.
+client/src/lib/queryClient.ts — getQueryFn (line 63)
+typescriptconst authHeaders = await getAuthHeaders();  // ← calls waitForSupabase()
+The default React Query queryFn calls getAuthHeaders() which awaits waitForSupabase() on every single query — including the public guest portal query that doesn't even need auth.
+Result: If /api/config/supabase hangs → waitForSupabase() never resolves → every React Query fetch is blocked → isLoading stays true forever → guest portal shows <PageLoading /> forever.
+Second Hang Point: Dashboard useAuth
+client/src/hooks/useAuth.ts — fetchOnboardingStatus() (line 25)
+typescriptconst response = await fetch("/api/dashboard/profile", { headers: {...} });  // ← NO TIMEOUT
+setIsLoading(false) in useAuth is only called AFTER this fetch completes (line 98). If it hangs → isLoading stays true → dashboard renders the full-screen spinner (dashboard.tsx:171-176) forever.
+Fixes
+Fix 1: Add timeout to initSupabase() fetch
+File: client/src/lib/supabase.ts
+Add an AbortController with an 8-second timeout to the /api/config/supabase fetch. If it times out, log a warning and continue (Supabase auth just won't work, but public pages still load).
+typescriptconst controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 8000);
+try {
+  const response = await fetch('/api/config/supabase', { signal: controller.signal });
+  clearTimeout(timeoutId);
+  // ... rest of logic
+} catch (error) {
+  clearTimeout(timeoutId);
+  console.warn('Failed to initialize Supabase:', error);
+  // gracefully continue with supabaseClient = null
+}
+This unblocks ALL React Query fetches (including guest portal) if Supabase config is slow.
+Fix 2: Add timeout to fetchOnboardingStatus() fetch
+File: client/src/hooks/useAuth.ts
+Same pattern — add an AbortController with an 8-second timeout to the /api/dashboard/profile fetch inside fetchOnboardingStatus. The catch block already handles errors gracefully (sets onboardingCompleted = true, doesn't block user), so timeout just triggers the existing catch path.
+typescriptconst controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 8000);
+try {
+  const response = await fetch("/api/dashboard/profile", {
+    headers: { "Authorization": `Bearer ${accessToken}` },
+    signal: controller.signal
+  });
+  clearTimeout(timeoutId);
+  // ... existing logic
+} catch (error) {
+  clearTimeout(timeoutId);
+  // existing catch already handles gracefully
+}
+This ensures setIsLoading(false) is always called within 8 seconds even if the profile endpoint hangs.
+Critical Files to Modify
+FileChangeclient/src/lib/supabase.tsAdd AbortController + 8s timeout to fetch('/api/config/supabase') in initSupabase()client/src/hooks/useAuth.tsAdd AbortController + 8s timeout to fetch("/api/dashboard/profile") in fetchOnboardingStatus()
+What This Does NOT Change
+
+No changes to the guest portal component or dashboard component
+No changes to API routes
+No changes to the overall auth flow or loading UI
+The 8-second timeout is a safety net only — normal operation is unaffected
+
+Verification
+
+Guest portal: Open /guest/some-valid-token — should load correctly. Open with an invalid token → should show "Invalid or Expired Link" error (not spinner).
+Dashboard: Open /dashboard?tab=bookings while logged in — tabs and booking list should load.
+Timeout simulation: If /api/config/supabase is unavailable (comment out the route temporarily), the guest portal should now show the error state (not spinner) within ~8 seconds rather than hanging forever.
+Auth flow: Login/logout still works normally.

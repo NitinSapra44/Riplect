@@ -1,0 +1,32 @@
+1. Lazy Load All Tab Components (Biggest Win)
+Right now the dashboard eagerly imports all 11 management components the moment anyone opens the dashboard — even if they only visit the Profile tab. That's roughly 6,700 lines of code loading upfront every single time, regardless of what the user actually does.
+The combined weight of just the three largest ones: CombinedSessionManagement (1,785 lines), EventsManagement (1,408 lines), DigitalProductsManagement (997 lines). A first-time visitor to the dashboard is loading all of that before seeing anything.
+The fix is converting every tab component import to React.lazy() so they only load when that tab is first clicked. The booking panel already does this correctly — BookingInbox and BookingDetail are both lazy-loaded inside it. The dashboard just needs the same treatment applied to all its tab components.
+
+2. Keep Tabs Mounted Once Visited (Second Biggest Win)
+The current tab switching pattern is {activeTab === "sessions" && <CombinedSessionManagement />}. Every time you leave the Sessions tab and come back, the component fully unmounts and remounts — which means all 3 of its queries fire again from scratch (sessions, bookings, locations).
+The fix is a "visited tabs" pattern: track which tabs have been opened, render them all once visited, but show/hide with CSS. The component stays in memory, its queries stay cached, and switching back to it is instantaneous with no network requests.
+
+3. URLSearchParams Recreated on Every Render
+Lines 66–70 of dashboard.tsx create a new URLSearchParams(window.location.search) directly in the render function. This runs on every single re-render of the dashboard — every form keystroke, every state update, every query result that comes in. It's a small cost but completely unnecessary since the URL doesn't change during a session. Wrapping it in useMemo with an empty dependency array fixes it permanently.
+
+4. form.watch() Causing Full Re-renders
+The profile form calls form.watch() three times in the render body — for profileImageUrl, shortBioImageUrl, and longBioImageUrl. Each watch() subscription causes the entire dashboard component to re-render whenever that field changes. Given the dashboard is 897 lines and manages a lot of state, these are expensive re-renders. The fix is moving each watched field into its own isolated sub-component so only the relevant part re-renders.
+
+5. Add Error Boundaries (Robustness)
+There are zero error boundaries anywhere in the dashboard. If CombinedSessionManagement throws a runtime error — a null pointer, a bad API response shape, anything — the entire dashboard crashes and the user sees a blank screen with no recovery path. This should be fixed by wrapping each lazy-loaded tab in an ErrorBoundary with a simple "Something went wrong, try refreshing this tab" fallback. The app already has Suspense boundaries set up for the page-level routes — error boundaries are the same concept but for runtime errors instead of loading states.
+
+6. Replace the Full-Page Spinner with Skeleton Screens
+Currently the entire dashboard is blocked behind a single spinner until the profile query resolves. Nothing renders at all during that time. Skeleton screens would let the sidebar and header structure render immediately while the content loads in, making the dashboard feel significantly faster even if the actual load time is identical.
+
+7. Sync Tab State to the URL
+Right now the URL reads the initial tab from ?tab=sessions but never updates it when the user switches tabs. This means hitting the browser back button does nothing, tabs can't be bookmarked, and if the page needs to refresh the user always lands back on Profile. Syncing activeTab to the URL as a query param is a small change that makes the dashboard behave like a real multi-page app without actually being one.
+
+8. Add Vite Chunk Splitting for Large Components
+The Vite config already manually splits vendor, TanStack Query, and Radix UI into separate chunks — that's good. But the three largest management components (sessions, events, products) are not split at all, meaning they end up in the main app bundle. Adding them as separate chunks means they're downloaded in parallel and cached independently by the browser. Combined with lazy loading, a user who never visits the Events tab never downloads that 1,408-line component at all.
+
+9. Separate the Profile Form into Its Own Component
+The profile form inside dashboard.tsx is doing three things that don't belong at the top level: it owns the form instance, the fieldArray for social links, and three watch() subscriptions. All of this state lives in the same component that manages the sidebar, tab routing, the header, and auth checks. Extracting it into a ProfileForm component cleans up the top-level dashboard significantly, localizes the re-renders to just that component, and makes both pieces easier to maintain and test independently.
+
+Priority Order for Implementation
+PriorityChangeImpact1Lazy load all tab componentsCuts initial load time significantly2Keep-mounted pattern for visited tabsEliminates re-fetches on tab switch back3Add error boundaries around each tabPrevents full crashes4form.watch() isolationReduces re-render cost per keystroke5URLSearchParams → useMemoEliminates wasted work on every render6Skeleton screensBetter perceived performance7URL sync for active tabBetter navigation behaviour8Vite chunk splitting for large componentsBetter caching and parallel loading9Extract ProfileForm componentMaintainability and scoped re-renders

@@ -1,0 +1,341 @@
+Here is a summary of all the changes required to make your profile page (`client/src/pages/profile.tsx`) match the Figma design (`9.jpg`).
+
+The main goal is to change the layout from your current "expandable sections" to a design that shows a "preview" of each section in its own card, as seen in the design image.
+
+### Summary of Changes:
+
+1.  **Global Page Style:**
+
+      * **File:** `client/src/pages/profile.tsx`
+      * **Change:** Remove the `bg-blue-50` from the main container to allow the light pink/beige background from `index.css` to show through, matching the design.
+
+2.  **Top Navigation Bar:**
+
+      * **File:** `client/src/pages/profile.tsx`
+      * **Change:** Make the top `<nav>` bar white and narrower.
+      * **Design:** Change `bg-blue-50` to `bg-white` and `h-16` to `h-14`.
+
+3.  **Profile Header & Avatar:**
+
+      * **File:** `client/src/components/profile-header.tsx`
+      * **Design:** The design shows a borderless, shadowless avatar.
+      * **Change 1:** Remove the gradient and padding around the avatar.
+          * Find: `<div className="... bg-gradient-to-br from-primary/20 to-secondary/20 p-1 shadow-xl">`
+          * Replace with: `<div className="... rounded-full">`
+      * **Change 2:** Remove the inner white border from the image.
+          * Find: `<img ... className="... border-2 border-white shadow-lg" />`
+          * Replace with: `<img ... className="..." />` (removing `border-2 border-white shadow-lg`).
+      * **Change 3:** Remove the green "online" dot.
+          * Find and **delete** the entire `<div className="absolute -bottom-2 -right-2 ...">` block.
+      * **Change 4 (Optional):** The design (`9.jpg`) does not show a long bio, media, or an expand button. To match it exactly, remove the `isLongBio` logic, the `bioImageUrl`/`bioVideoUrl` sections, and the "Read more" button. Show the full `profile.bio` text directly.
+
+4.  **Main Content Cards (Curvature):**
+
+      * **File:** `client/src/components/expandable-section.tsx`
+      * **Design:** All cards have a very large border radius.
+      * **Change:**
+          * Find: `className="bg-white rounded-xl shadow-sm ..."`
+          * Replace with: `className="bg-white rounded-3xl shadow-sm ..."`
+      * **File:** `client/src/components/booking-section.tsx`, `client/src/components/events-section.tsx`, `client/src/components/products-section.tsx`, `client/src/components/blog-section.tsx`
+      * **Change:** Find the `Card` components inside these files and change any `rounded-lg` or `rounded-2xl` to `rounded-3xl` for consistency.
+
+5.  **Section Previews (Layout, Text, Buttons):**
+
+      * **File:** `client/src/pages/profile.tsx`
+
+      * **Design:** The "Home" tab is a list of card *previews*. You need to modify the `previewContent` prop for each `<ExpandableSection>` to match the design.
+
+      * **A. "Featured Sessions" Card:**
+
+          * **Change:** Replace the existing `previewContent` for the "bookings" section with this new layout. This adds the "One to one session" text, moves the price and duration, and styles the "Book a Session" button as per the design.
+          * **Code:**
+            ```tsx
+            // Add to imports at top
+            import { Clock, ArrowRight, ChevronUp } from "lucide-react";
+
+            // ...
+
+            <ExpandableSection
+              id="bookings"
+              // ... other props
+              previewContent={
+                <div className="p-6">
+                  <div className="flex items-center mb-4">
+                    <Calendar className="w-6 h-6 text-black mr-3" />
+                    <h3 className="text-xl font-bold text-gray-900">Featured Sessions</h3>
+                  </div>
+                  <div className="space-y-4">
+                    {sessions.slice(0, 1).map((session, index) => ( // Design shows one featured item
+                      <div
+                        key={index}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          const expandButton = document.querySelector('[data-section-id="bookings"]');
+                          if (expandButton) { (expandButton as HTMLElement).click(); }
+                        }}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <h4 className="font-semibold text-gray-900 text-lg">{session.title}</h4>
+                          <span className="text-2xl font-bold text-[#C96868]">${session.price}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <p className="text-gray-600 text-sm">{session.description}</p>
+                          <span className="text-sm text-gray-500 flex items-center shrink-0 ml-2">
+                            <Clock className="w-4 h-4 mr-1" />
+                            {session.duration} min
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {/* "Book a Session" Button from design */}
+                    <Button className="w-full bg-gray-100 hover:bg-gray-200 text-black font-bold rounded-2xl h-12 mt-4 flex justify-between items-center"
+                      onClick={() => {
+                        const expandButton = document.querySelector('[data-section-id="bookings"]');
+                        if (expandButton) { (expandButton as HTMLElement).click(); }
+                      }}
+                    >
+                      <span>Book a Session</span>
+                      <span className="w-8 h-8 rounded-full bg-[#C96868] text-white flex items-center justify-center">
+                        <ChevronUp className="w-5 h-5" />
+                      </span>
+                    </Button>
+                  </div>
+                </div>
+              }
+            >
+              {/* ... existing BookingSection ... */}
+            </ExpandableSection>
+            ```
+
+      * **B. "Links" Card (New Section):**
+
+          * **Design:** The design has a "Links" card that is missing in your code.
+          * **Action 1:** Create a new component `client/src/components/links-section.tsx`.
+            ```tsx
+            // New File: client/src/components/links-section.tsx
+            import { ChevronRight, Link as LinkIcon, Download, Mail, Calendar, BookOpen, Video, Music, ShoppingBag, Globe, ExternalLink } from "lucide-react";
+
+            type LinkItem = {
+              title: string;
+              url: string;
+              icon?: string;
+            };
+
+            const getIconComponent = (iconName?: string) => {
+              const iconProps = { className: "h-6 w-6 text-gray-700" };
+              const iconMap = {
+                link: <LinkIcon {...iconProps} />,
+                download: <Download {...iconProps} />,
+                mail: <Mail {...iconProps} />,
+                calendar: <Calendar {...iconProps} />,
+                book: <BookOpen {...iconProps} />,
+                video: <Video {...iconProps} />,
+                music: <Music {...iconProps} />,
+                shop: <ShoppingBag {...iconProps} />,
+                website: <Globe {...iconProps} />,
+                external: <ExternalLink {...iconProps} />,
+              };
+              return iconMap[iconName as keyof typeof iconMap] || <div className="w-6 h-6" />;
+            };
+
+            export const LinksSection = ({ links }: { links: LinkItem[] }) => {
+              if (!links || links.length === 0) return null;
+
+              return (
+                <div className="flow-root">
+                  <ul role="list" className="-my-4 divide-y divide-gray-200">
+                    {links.map((link) => (
+                      <li key={link.url} className="py-4">
+                        <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between group">
+                          <div className="flex items-center space-x-4">
+                            {getIconComponent(link.icon)}
+                            <span className="font-medium text-lg">{link.title}</span>
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-gray-700" />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            };
+            ```
+          * **Action 2:** Add the new section in `client/src/pages/profile.tsx` (inside the `activeTab === "home"` block).
+            ```tsx
+            // Add import
+            import { LinksSection } from "@/components/links-section";
+
+            {/* Custom Links Section (Add this) */}
+            {profile.customLinks && profile.customLinks.length > 0 && (
+              <ExpandableSection
+                id="links"
+                title="Links"
+                description="My important links"
+                icon={<LinkIcon className="w-5 h-5 text-gray-700" />}
+                iconBgColor="bg-gray-100"
+                previewContent={
+                  <div className="p-6">
+                    <div className="flex items-center mb-4">
+                      <LinkIcon className="w-6 h-6 text-black mr-3" />
+                      <h3 className="text-xl font-bold text-gray-900">Links</h3>
+                    </div>
+                    <LinksSection links={profile.customLinks} />
+                  </div>
+                }
+              >
+                <LinksSection links={profile.customLinks} />
+              </ExpandableSection>
+            )}
+            ```
+
+      * **C. "Latest Insights" (Blog) Card:**
+
+          * **Change:** Replace the `previewContent` for the "blog" section to match the design (list of 2 posts + "Read more" button).
+          * **Code:**
+            ```tsx
+            <ExpandableSection
+              id="blog"
+              // ... other props
+              previewContent={
+                <div className="p-6">
+                  <div className="flex items-center mb-4">
+                    <BookOpen className="w-6 h-6 text-black mr-3" />
+                    <h3 className="text-xl font-bold text-gray-900">Latest Insights</h3>
+                  </div>
+                  <div className="space-y-4">
+                    {blogPosts.slice(0, 2).map((post, index) => (
+                      <div
+                        key={index}
+                        className="bg-white rounded-2xl p-4 border border-gray-200 cursor-pointer hover:shadow-lg"
+                        onClick={() => setLocation(`/${username}/blog/${post.slug}`)}
+                      >
+                        <h4 className="font-semibold text-gray-900 mb-1 text-base">{post.title}</h4>
+                        <p className="text-gray-600 text-sm line-clamp-2">{post.excerpt}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <Button className="w-full bg-gray-100 hover:bg-gray-200 text-black font-bold rounded-2xl h-12 mt-4 flex justify-between items-center"
+                    onClick={() => {
+                      const expandButton = document.querySelector('[data-section-id="blog"]');
+                      if (expandButton) { (expandButton as HTMLElement).click(); }
+                    }}
+                  >
+                    <span>Read more</span>
+                    <span className="w-8 h-8 rounded-full bg-[#C96868] text-white flex items-center justify-center">
+                      <ChevronUp className="w-5 h-5" />
+                    </span>
+                  </Button>
+                </div>
+              }
+            >
+              {/* ... existing BlogSection ... */}
+            </ExpandableSection>
+            ```
+
+      * **D. "Upcoming Events" Card:**
+
+          * **Change:** Replace the `previewContent` for the "events" section to match the design (image, title, date, location, price, "View details" button).
+          * **Code:**
+            ```tsx
+            <ExpandableSection
+              id="events"
+              // ... other props
+              previewContent={
+                <div className="p-6">
+                  <div className="flex items-center mb-4">
+                    <CalendarCheck className="w-6 h-6 text-black mr-3" />
+                    <h3 className="text-xl font-bold text-gray-900">Upcoming Events</h3>
+                  </div>
+                  <div className="space-y-4">
+                    {events.slice(0, 2).map((event, index) => (
+                      <div
+                        key={index}
+                        className="bg-white rounded-2xl p-4 border border-gray-200 cursor-pointer hover:shadow-lg"
+                        onClick={() => setLocation(`/${username}/event/${event.id}`)}
+                      >
+                        <div className="flex gap-4">
+                          {event.featuredImage && (
+                            <img src={event.featuredImage} alt={event.title} className="w-20 h-20 rounded-xl object-cover" />
+                          )}
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-900 text-base">{event.title}</h4>
+                            <p className="text-xs text-gray-500 mt-1">{new Date(event.date).toLocaleDateString()} • {event.location}</p>
+                            <div className="flex justify-between items-center mt-2">
+                              <span className="font-bold text-lg text-[#C96868]">${event.price}</span>
+                              <Button variant="ghost" className="h-auto p-0 text-sm text-primary font-bold">View details</Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              }
+            >
+              {/* ... existing EventsSection ... */}
+            </ExpandableSection>
+            ```
+
+      * **E. "Featured Products" Card:**
+
+          * **Change:** Replace the `previewContent` for the "products" section to match the design (image, title, price, "View" button).
+          * **Code:**
+            ```tsx
+            <ExpandableSection
+              id="products"
+              // ... other props
+              previewContent={
+                <div className="p-6">
+                  <div className="flex items-center mb-4">
+                    <Download className="w-6 h-6 text-black mr-3" />
+                    <h3 className="text-xl font-bold text-gray-900">Featured Products</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {products.slice(0, 2).map((product, index) => (
+                      <div
+                        key={index}
+                        className="bg-white rounded-2xl border border-gray-200 cursor-pointer hover:shadow-lg overflow-hidden"
+                        onClick={() => setLocation(`/${username}/product/${product.id}`)}
+                      >
+                        {product.imageUrl && (
+                          <img src={product.imageUrl} alt={product.title} className="w-full h-32 object-cover" />
+                        )}
+                        <div className="p-4">
+                          <h4 className="font-semibold text-gray-900 text-base mb-1 truncate">{product.title}</h4>
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-lg text-[#C96868]">${product.price}</span>
+                            <Button variant="ghost" className="h-auto p-0 text-sm text-primary font-bold">View</Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              }
+            >
+              {/* ... existing ProductsSection ... */}
+            </ExpandableSection>
+            ```
+
+      * **F. "Photo Gallery" Card:**
+
+          * **Change:** The existing `previewContent` in `profile.tsx` is already very close to the design. Just change the icon.
+          * **Code:**
+            ```tsx
+            <ExpandableSection
+              id="gallery"
+              // ... other props
+              previewContent={
+                <div className="p-6">
+                  <div className="flex items-center mb-4">
+                    {/* This icon matches the design */}
+                    <Images className="w-6 h-6 text-black mr-3" /> 
+                    <h3 className="text-xl font-bold text-gray-900">Photo Gallery</h3>
+                  </div>
+                  {/* ... existing grid of images ... */}
+                </div>
+              }
+            >
+              {/* ... existing GallerySection ... */}
+            </ExpandableSection>
+            ```
