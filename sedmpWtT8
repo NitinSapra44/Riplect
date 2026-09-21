@@ -1,0 +1,72 @@
+modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
+run = "npm run dev"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["vim"]
+
+[deployment]
+deploymentTarget = "autoscale"
+build = ["npm", "run", "build"]
+run = ["npm", "run", "start"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[agent]
+integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:1.0.0", "javascript_stripe:1.0.0", "javascript_sendgrid:1.0.0", "javascript_object_storage:1.0.0", "resend:1.0.0"]
+expertMode = true
+
+[objectStorage]
+defaultBucketID = "replit-objstore-60adafa1-d136-4d5a-912f-4dc5892c547f"
+
+[userenv]
+
+[userenv.shared]
+PUBLIC_OBJECT_SEARCH_PATHS = "replit-objstore-60adafa1-d136-4d5a-912f-4dc5892c547f/public"
+PRIVATE_OBJECT_DIR = "replit-objstore-60adafa1-d136-4d5a-912f-4dc5892c547f/.private"
+VITE_POSTHOG_KEY = "phc_wSVzQSLGLdzkECGbxyXaviwcD8fKJPEY6REs7CWM8f2E"
+VAPID_PUBLIC_KEY = "BKzdclReTdMiHl3AavyS6cKGZzlUs8fpfhyXLxj8HbttR1HNg3iYg9E1y18zhesVEpsiwMQtrUIYfzlnSYw178g"
+VAPID_SUBJECT = "mailto:notifications@riplect.com"
+VAPID_PRIVATE_KEY = "FIh0TMxSBt7hzk4Dud3azlykvjf87q2Os14-FFv5jWA"
+VITE_PUBLIC_APP_URL = "https://riplect.com"
+
+[userenv.production]
+PUBLIC_APP_URL = "https://riplect.com"
+
+[userenv.development]
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 60000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 23636
+externalPort = 3000
+
+[[ports]]
+localPort = 23637
+externalPort = 80

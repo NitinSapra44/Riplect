@@ -1,0 +1,72 @@
+Insight ─────────────────────────────────────                                                                                                                                                                     
+  The two most critical issues here follow a classic pattern in rapidly-built apps: debug/scaffolding code that accidentally ships. The /api/debug/guest-profiles endpoint and the raw guestProfile response are both
+  examples of code that was correct during development but becomes a liability in production. A useful defence is to have a pre-merge checklist that explicitly searches for /debug/ routes and any res.json({        
+  <rawDbObject> }) patterns before merging feature branches.
+  ─────────────────────────────────────────────────                                                                                                                                                                   
+                                                                                                                                                                                                                      
+⏺ ---                                                  
+  Code review — Booking-cancellation-reschedule branch                                                                                                                                                                
+                                          
+  Found 5 issues (branch HEAD: 098f04bb):                                                                                                                                                                             
+                                                                         
+  ---                               
+  1. Unauthenticated endpoint exposes all guest PII and auth tokens
+                                                     
+  No isAuthenticated guard. Returns every guest's accessToken, magicLinkToken, email, name, and phone to any unauthenticated caller.
+  https://github.com/Riplek/Riplek_v1/blob/098f04bbd17e1f31b8433211f22af6b935d8d64d/CLAUDE.md#L47-L50 says: "Protected: /api/dashboard/* (requires JWT via requireAuth middleware)".                                  
+   
+  https://github.com/Riplek/Riplek_v1/blob/098f04bbd17e1f31b8433211f22af6b935d8d64d/server/routes.ts#L2995-L3007                                                                                                      
+                                         
+  ---
+  2. /api/guest/:accessToken leaks magicLinkToken to the caller
+
+  The response returns the raw guestProfile DB object including magicLinkToken and magicLinkExpiresAt. A guest who knows their own accessToken (sent in email) can retrieve a second auth credential (magicLinkToken).
+   Compare with the properly projected /api/guest/dashboard/:magicLinkToken at line 2965.
+
+  https://github.com/Riplek/Riplek_v1/blob/098f04bbd17e1f31b8433211f22af6b935d8d64d/server/routes.ts#L3090-L3095
+
+  ---
+  3. Migration file is missing two tables required by the schema
+
+  migrations/0001_fearless_metal_master.sql only creates 3 tables (booking_messages, guest_profiles, session_reviews). Both booking_events (defined in shared/schema.ts line 386, called by
+  dbStorage.createBookingEvent(...) in every booking action) and coach_payment_settings (schema line 351, used by /api/dashboard/payment-settings) are absent. Several new bookings columns (paymentProofUrl,
+  paymentMethodsOffered, etc.) are also missing.
+
+  https://github.com/Riplek/Riplek_v1/blob/098f04bbd17e1f31b8433211f22af6b935d8d64d/migrations/0001_fearless_metal_master.sql#L1-L37
+
+  ---
+  4. 24-hour cancellation/reschedule window is evaluated in the wrong timezone
+
+  const bookingDateTime = new Date(
+    `${booking.bookingDate.toISOString().split('T')[0]}T${booking.bookingTime}`
+  );
+  .toISOString().split('T')[0] returns a UTC date, but bookingTime is stored as local time (e.g. "14:00"). Node.js parses the concatenated string as server-local time, not the coach's timezone. For a UTC+5:30
+  deployment the boundary is evaluated ~5.5 hours off, allowing guests to cancel past the intended cutoff. Same pattern on both cancel (line 3141) and reschedule (line 3249).
+
+  https://github.com/Riplek/Riplek_v1/blob/098f04bbd17e1f31b8433211f22af6b935d8d64d/server/routes.ts#L3139-L3148
+
+  ---
+  5. Race condition in cancel and reschedule — no database-level locking
+
+  Both the guest cancel and coach cancel endpoints use a read-check-write pattern with no transaction or conditional WHERE status != 'cancelled':
+  const booking = await dbStorage.getBookingById(...);    // read
+  if (booking.status === 'cancelled') return 400;         // check
+  await dbStorage.updateBooking(id, { status: 'cancelled' }); // write (no lock)
+  A simultaneous guest and coach cancellation can both pass the check and produce duplicate cancellation events and emails. updateBooking in storage.ts has no conditional WHERE clause.
+
+  https://github.com/Riplek/Riplek_v1/blob/098f04bbd17e1f31b8433211f22af6b935d8d64d/server/routes.ts#L3116-L3230
+
+  ---
+  Checked but not flagged (filtered out): pre-existing mock payment-intent endpoint (score 25), status-endpoint cancel bypass (pre-existing on main, score 75), location visibility city/state leak (score 75),
+  unescaped email subject lines (email subjects are plain text, not HTML — score 25), no previous PR review comments found in repo history.
+
+⏺ ★ Insight ───────────────────────────────────── 
+  Issues 1 and 2 together form a token enumeration chain: issue 1 dumps all accessToken values unauthenticated; issue 2 lets any caller exchange an accessToken for a magicLinkToken. Even independently, each is
+  exploitable — together they allow complete takeover of any guest account. Always filter DB row projections at the API boundary rather than returning raw ORM results.                                               
+                                                                         
+  Issue 5 (the race condition) is the classic check-then-act concurrency bug. The safest fix in Postgres/Drizzle is an atomic conditional update: UPDATE bookings SET status='cancelled' WHERE id=X AND status !=     
+  'cancelled' RETURNING * — if the row count returned is 0, another actor beat you to it.
+  ─────────────────────────────────────────────────                                                                                                                                                                   
+                                                                                                                                                                                                                      
+  Summary: 5 issues found across security, data integrity, and correctness. Issues 1 and 2 are critical security vulnerabilities that should be fixed before merging. Issue 3 (missing migration tables) will cause   
+  runtime errors on a fresh deployment. Issues 4 and 5 affect correctness of the core booking cancellation/reschedule feature.                                                                                        

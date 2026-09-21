@@ -1,0 +1,28 @@
+Fix 2: HTML Injection in Email Templates
+Context
+Every email template in server/emailService.ts interpolates user-provided strings directly into HTML without escaping. An attacker could inject <script>, event handlers, or broken markup into emails (e.g., a client name of "><img onerror=alert(1) src=x>). This is a pre-existing pattern across all ~15 email functions — not a regression.
+An escapeHtml() function already exists in server/ogTags.ts but is unexported and unused in emailService.
+File to Modify
+server/emailService.ts
+Changes
+1. Add escapeHtml helper at the top of emailService.ts (after the LOGO_URL constant)
+tsfunction escapeHtml(str: string | null | undefined): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+2. Apply at the top of each function — escape all user-controlled params before building the HTML template
+The pattern for every function: declare safe* variables at the top, then use those throughout the template string.
+FunctionFields to escapesendVerificationEmailnamesendPasswordResetEmailnamesendWelcomeEmailnamesendContactMessageToCoachname, subject, message, senderName, senderEmail, senderPhonesendBookingPendingToClientclientName, sessionTitle, coachName, bookingDate, bookingTimesendBookingRequestToCoachname, sessionTitle, clientName, clientEmail, clientPhone, message, formattedLocationsendBookingConfirmedToClientclientName, coachName, sessionTitle, bookingDate, bookingTime, coachMessage, paymentInfo, fullLocation, meetingLinksendBookingCancellationToCoachname, sessionTitle, bookingDate, bookingTime, clientName, clientEmailsendPlatformContactEmailsenderName, senderEmail, senderPhone, subject, messagesendCancellationToCoachcoachName, clientName, sessionTitle, bookingDate, bookingTime, cancellationReasonsendCancellationToClientclientName, coachName, sessionTitle, bookingDate, bookingTime, cancellationReasonsendRescheduleToCoachcoachName, clientName, clientMessage, sessionTitlesendRescheduleToClientclientName, coachName, coachMessage, sessionTitlesendPaymentProofToCoachpaymentReferenceText, clientName, sessionTitle, bookingDate, bookingTimesendPaymentVerifiedToClientclientName, coachName, sessionTitle, coachMessage, meetingLink
+
+Note: URLs used in href attributes (e.g. meetingLink, googleMapsUrl) should use escapeHtml() for the display text but the href value itself should be validated/sanitized separately (ensure https:// or http:// prefix) to prevent javascript: injection.
+
+Verification
+
+Send a test email where a user-provided field contains <b>test</b> — it should appear as literal text <b>test</b>, not bold
+Send a test email with "><script>alert(1)</script> in a name/message field — should not execute
+All existing email flows (booking confirm, cancel, reschedule) should continue to work normally

@@ -1,0 +1,463 @@
+# Stale Data & Real-Time Sync Fix
+**Project:** RiplekApp
+**Last reviewed:** Full codebase audit across all dashboard components, public profile, and guest portal
+**Status:** Unimplemented — pending phased rollout
+
+---
+
+## The Core Problem
+
+RiplekApp uses TanStack Query for all data fetching. The global QueryClient is configured with three settings that together cause every stale-data issue reported across the app:
+
+```ts
+// client/src/lib/queryClient.ts — current config (the root cause)
+staleTime: Infinity,          // cached data is NEVER considered outdated
+refetchOnWindowFocus: false,  // switching tabs never triggers a re-fetch
+refetchInterval: false,       // no background polling whatsoever
+```
+
+With these settings, once a page fetches data it freezes in memory indefinitely. TanStack Query only serves fresh data if a mutation explicitly calls `queryClient.invalidateQueries()` — and even then only within the same browser tab. Additionally, a codebase audit revealed that multiple mutations are missing invalidations entirely, meaning even fixing the config alone would not resolve every issue.
+
+---
+
+## Sub-Problems
+
+### 1. Dashboard navigation shows stale data
+**Symptom:** Moving between dashboard tabs and returning shows old data. Any change requires a hard browser refresh.
+**Cause:** `staleTime: Infinity` + `refetchOnWindowFocus: false`. When the user navigates away and returns, TanStack Query considers the cached data still valid and never re-fetches.
+**Affected:** All dashboard tabs — Profile, Sessions, Events, Blog, Products, Gallery, Bookings, Contact, Locations, Wallet, Payments, Profile Settings.
+
+---
+
+### 2. Events / Sessions / Blog Posts / Products don't appear on public profile after creation or edit
+**Symptom:** Coach creates or edits content in the dashboard. The public profile still shows the old version.
+**Cause:** Two compounding issues:
+- `staleTime: Infinity` freezes the profile page cache permanently.
+- Feature toggle mutations (blog feature, product feature) only invalidate their dashboard query keys — they do not invalidate the public profile queries at all, so the public cache is never cleared.
+**Affected:** `events-management.tsx`, `combined-session-management.tsx`, `digital-products-management.tsx`, `blog-management.tsx`, public `profile.tsx`.
+
+---
+
+### 3. Availability changes don't reflect in the session booking flow
+**Symptom:** Coach adds or removes availability dates. The guest-facing booking page still shows old availability.
+**Cause:** Availability mutations in the dashboard invalidate only `/api/dashboard/availability` and `/api/dashboard/blocked-dates`. They do **not** invalidate `/api/profiles/{username}/availability`, which the guest booking flow reads from. This is a missing invalidation, not just a staleTime issue.
+**Affected:** Availability management in `combined-session-management.tsx`, guest session booking flow in `profile.tsx`.
+
+---
+
+### 4. Guest portal shows stale data after coach actions
+**Symptom:** Coach confirms a booking, updates payment methods, or changes session details. Guest portal still shows the old status/data until the guest refreshes.
+**Cause:** Two separate problems:
+- The dashboard query namespace (`/api/dashboard/*`) and guest portal namespace (`/api/guest/{accessToken}`) are completely siloed. Coach-side mutations never invalidate guest-side cache.
+- Payment settings mutations only invalidate `/api/dashboard/payment-settings` — not the guest portal query that renders payment instructions to the guest.
+**Affected:** `booking-detail.tsx`, `payments-management.tsx`, `guest-portal.tsx`.
+
+---
+
+### 5. Guest actions don't reflect on coach dashboard
+**Symptom:** Guest cancels a booking or sends a message. Coach dashboard still shows "Pending" until refreshed.
+**Cause:** Guest portal mutations invalidate only their own token-based queries (`/api/guest/{accessToken}`). They have no way to invalidate the coach's `/api/dashboard/bookings` directly since they are on a separate device and browser.
+**Affected:** `guest-portal.tsx` (cancel, reschedule, mark-paid mutations), `booking-detail.tsx` (coach side).
+**Fix:** Guest portal polling (see Phase 1B) handles this — coach dashboard will auto-re-fetch every 30 seconds.
+
+---
+
+### 6. Location changes don't sync to public profile
+**Symptom:** Coach adds or edits a location. The public profile (contact card, session locations) still shows the old data.
+**Cause:** Location mutations only invalidate `/api/locations`. They do not invalidate `/api/profiles/{username}` or any public-facing query that displays location data in sessions, events, and the contact card.
+**Affected:** `locations-management.tsx`, public `profile.tsx`.
+
+---
+
+### 7. Tag changes don't sync to public profile
+**Symptom:** Coach adds or syncs profile/session/product tags. Tags don't update on the public-facing profile.
+**Cause:** Tag mutations in `profile-settings.tsx` invalidate the dashboard tag queries but miss `/api/profiles`, which is what the public profile reads tags from.
+**Affected:** `profile-settings.tsx` (addTagMutation, syncConsolidatedTagsMutation), public `profile.tsx`.
+
+---
+
+---
+
+## Complete Coach Action → Public Reflection Map
+
+Every action a coach can take in the dashboard, and exactly where it shows on the user-facing side:
+
+| Coach Action | Dashboard Component | Currently Invalidates | Missing Invalidations | Where It Shows Publicly |
+|---|---|---|---|---|
+| **PROFILE PAGE TAB** |||||
+| Save profile (name, title, bio, photo) | `dashboard.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Profile header, short/long bio on public profile |
+| Add/remove social media links | `dashboard.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Contact card social icons |
+| Upload short/long bio media | `dashboard.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Bio sections on public profile |
+| **CONTACT CARD TAB** |||||
+| Update phone / WhatsApp / email / website | `contact-management.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Contact card on public profile |
+| Select/change location | `contact-management.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Location on contact card |
+| Toggle location visibility | `contact-management.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Location shown/hidden on contact card |
+| Add contact link / social link | `contact-management.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Contact card links |
+| **CUSTOM LINKS TAB** |||||
+| Create / update / delete profile header link | `links-management.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Icon link buttons in profile header |
+| Create / update / delete home page link card | `links-management.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Link cards in profile home section |
+| **BOOKING SESSIONS TAB** |||||
+| Create session | `combined-session-management.tsx` | `/api/dashboard/sessions`, `/api/profiles` (exact:false) | None | Sessions section on public profile |
+| Update session | `combined-session-management.tsx` | `/api/dashboard/sessions`, `/api/profiles` (exact:false) | None | Sessions section on public profile |
+| Delete session | `combined-session-management.tsx` | `/api/dashboard/sessions`, `/api/profiles` (exact:false) | None | Session removed from public profile |
+| Feature a session | `combined-session-management.tsx` | `/api/dashboard/sessions`, `/api/profiles` (exact:false) | None | Featured badge on session card |
+| Add availability dates | `combined-session-management.tsx` | `/api/dashboard/availability` | ❌ `/api/profiles/{username}/availability` | Guest session booking calendar |
+| Remove / block availability dates | `combined-session-management.tsx` | `/api/dashboard/blocked-dates` | ❌ `/api/profiles/{username}/availability` | Guest session booking calendar |
+| Confirm booking | `booking-detail.tsx` | `/api/dashboard/bookings` | ❌ `/api/guest/{accessToken}` | Guest portal booking status |
+| Decline booking | `booking-detail.tsx` | `/api/dashboard/bookings` | ❌ `/api/guest/{accessToken}` | Guest portal booking status |
+| Verify payment (coach side) | `booking-detail.tsx` | `/api/dashboard/bookings` | ❌ `/api/guest/{accessToken}` | Guest portal payment status |
+| Send message to guest | `booking-detail.tsx` | `/api/dashboard/bookings` | Verify message sub-query invalidation | Guest portal message thread |
+| **BLOG POSTS TAB** |||||
+| Create blog post | `blog-management.tsx` | `/api/dashboard/blog`, `/api/profiles` (exact:false) | None | Blog section on public profile |
+| Update blog post | `blog-management.tsx` | `/api/dashboard/blog`, `/api/profiles` (exact:false) | None | Blog section on public profile |
+| Delete blog post | `blog-management.tsx` | `/api/dashboard/blog`, `/api/profiles` (exact:false) | None | Blog post removed from public profile |
+| Publish / unpublish blog post | `blog-management.tsx` | `/api/dashboard/blog`, `/api/profiles` (exact:false) | None | Post appears/disappears on public profile |
+| Feature a blog post | `blog-management.tsx` | `/api/dashboard/blog` only | ❌ `/api/profiles` (exact:false) | Featured badge on blog card on public profile |
+| **DIGITAL PRODUCTS TAB** |||||
+| Create product | `digital-products-management.tsx` | `/api/dashboard/products`, `/api/profiles` (exact:false) | None | Products section on public profile |
+| Update product | `digital-products-management.tsx` | `/api/dashboard/products`, `/api/profiles` (exact:false) | None | Products section on public profile |
+| Delete product | `digital-products-management.tsx` | `/api/dashboard/products`, `/api/profiles` (exact:false) | None | Product removed from public profile |
+| Feature a product | `digital-products-management.tsx` | `/api/dashboard/products` only | ❌ `/api/profiles` (exact:false) | Featured badge on product card on public profile |
+| Upload product file | `digital-products-management.tsx` | None (upload only) | None needed until product saved | File available for guest download |
+| **EVENTS TAB** |||||
+| Create event | `events-management.tsx` | `/api/dashboard/events`, `/api/profiles` (exact:false) | None | Events section on public profile |
+| Update event | `events-management.tsx` | `/api/dashboard/events`, `/api/profiles` (exact:false) | None | Events section on public profile |
+| Delete event | `events-management.tsx` | `/api/dashboard/events`, `/api/profiles` (exact:false) | None | Event removed from public profile |
+| Feature an event | `events-management.tsx` | `/api/dashboard/events`, `/api/profiles` (exact:false) | None | Featured badge on event card |
+| **GALLERY TAB** |||||
+| Upload gallery image | `gallery-management.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Gallery section on public profile |
+| Remove gallery image | `gallery-management.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Image removed from gallery |
+| **PROFILE SETTINGS TAB** |||||
+| Update username | `profile-settings.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Public profile URL changes |
+| Update search location | `profile-settings.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false) | None | Location shown on profile, affects discovery |
+| Add profile tags | `profile-settings.tsx` | `/api/dashboard/profile/tags`, `/api/dashboard/profile/consolidated-tags` | ❌ `/api/profiles` (exact:false) | Tags shown on profile and in search/discovery |
+| Sync consolidated tags | `profile-settings.tsx` | `/api/dashboard/profile`, `/api/profiles` (exact:false), tags queries | None | Tags fully synced on public profile |
+| **LOCATIONS TAB** |||||
+| Create location | `locations-management.tsx` | `/api/locations` | ❌ `/api/profiles` (exact:false) | Locations used in sessions, events, contact card |
+| Update location | `locations-management.tsx` | `/api/locations` | ❌ `/api/profiles` (exact:false) | Updated location reflects in sessions/events |
+| Delete location | `locations-management.tsx` | `/api/locations` | ❌ `/api/profiles` (exact:false) | Location removed from sessions/events/contact |
+| Set default location | `locations-management.tsx` | `/api/locations` | ❌ `/api/profiles` (exact:false) | Default location shown on profile |
+| **WALLET & EARNINGS TAB** |||||
+| Connect Stripe account | `wallet-management.tsx` | None (redirects to Stripe OAuth) | N/A — external flow | Not public-facing |
+| Request payout | `wallet-management.tsx` | `/api/dashboard/wallet/summary` | None needed | Not public-facing |
+| **PAYMENTS TAB** |||||
+| Enable / configure payment method | `payments-management.tsx` | `/api/dashboard/payment-settings` | N/A — part of booking workflow | Booking workflow only |
+
+---
+
+## Summary of All Missing Invalidations
+
+Extracted from the full audit — these are the exact gaps that cause stale data even after Phase 1 (config fix):
+
+| # | Component | Mutation | What's Missing |
+|---|---|---|---|
+| 1 | `combined-session-management.tsx` | Add/remove availability | `/api/profiles/{username}/availability` |
+| 2 | `booking-detail.tsx` | Confirm booking | `/api/guest/{accessToken}` |
+| 3 | `booking-detail.tsx` | Decline booking | `/api/guest/{accessToken}` |
+| 4 | `booking-detail.tsx` | Verify payment | `/api/guest/{accessToken}` |
+| 5 | `blog-management.tsx` | Feature blog post | `/api/profiles` (exact:false) |
+| 6 | `digital-products-management.tsx` | Feature product | `/api/profiles` (exact:false) |
+| 7 | `profile-settings.tsx` | Add profile tags | `/api/profiles` (exact:false) |
+| 8 | `locations-management.tsx` | Create location | `/api/profiles` (exact:false) |
+| 9 | `locations-management.tsx` | Update location | `/api/profiles` (exact:false) |
+| 10 | `locations-management.tsx` | Delete location | `/api/profiles` (exact:false) |
+| 11 | `locations-management.tsx` | Set default location | `/api/profiles` (exact:false) |
+
+---
+
+## Solution — Three Phases + Guest Portal Polling
+
+---
+
+### Phase 1A — Fix the QueryClient Defaults
+**File:** `client/src/lib/queryClient.ts`
+**Time:** 30 minutes
+**Fixes:** Sub-problems 1, 2 (partially), and stale navigation throughout the dashboard
+
+Change the global defaults:
+
+```ts
+// client/src/lib/queryClient.ts — proposed config
+staleTime: 30 * 1000,        // data is fresh for 30s, then silently re-fetched on next use
+refetchOnWindowFocus: true,   // re-validates when user returns to the tab or browser
+refetchInterval: false,       // keep polling off globally (guest portal overrides this below)
+retry: false,                 // keep as-is
+```
+
+**Why 30 seconds:** Covers the most common flow — coach saves something, clicks View Profile, switches tab. The round-trip takes under 30 seconds. By the time the coach is reading the profile page, TanStack Query has silently re-fetched in the background. Data is current, no refresh needed.
+
+**Per-query overrides to add** for data that should behave differently:
+
+```ts
+// Booking messages — time-sensitive, keep tight
+useQuery({ queryKey: [...], staleTime: 10 * 1000 })
+
+// Payment settings, wallet — expensive, changes rarely
+useQuery({ queryKey: [...], staleTime: 5 * 60 * 1000 })
+```
+
+---
+
+### Phase 1B — Guest Portal Polling
+**File:** `client/src/pages/guest-portal.tsx`
+**Time:** 15 minutes
+**Fixes:** Sub-problems 4 (partially), 5, and 8 — guest sees coach actions within 15 seconds
+
+Add `refetchInterval` to the main guest portal query:
+
+```ts
+// client/src/pages/guest-portal.tsx
+const { data, isLoading, error } = useQuery<GuestPortalData>({
+  queryKey: [`/api/guest/${accessToken}`],
+  enabled: !!accessToken,
+  refetchOnWindowFocus: true,   // already set, keep it
+  refetchInterval: 15 * 1000,   // ADD THIS — silently polls every 15 seconds
+  refetchIntervalInBackground: false, // only polls when guest has the tab open
+});
+```
+
+This means: coach confirms a booking → within 15 seconds the guest portal silently re-fetches → guest sees "Confirmed" without touching their browser. Same applies to payment method changes, session updates, and any other coach action that affects the guest view.
+
+The 15-second interval is chosen deliberately — short enough to feel responsive, not so short it hammers the API. This also solves Sub-problem 5 (guest actions → coach dashboard) because the coach dashboard will naturally re-fetch through Phase 1A's `staleTime: 30s` + `refetchOnWindowFocus: true`.
+
+Also add polling to the booking messages sub-query so new messages appear without refresh:
+
+```ts
+useQuery({
+  queryKey: [`/api/guest/${accessToken}`, "bookings", bookingId, "messages"],
+  refetchInterval: 10 * 1000,  // messages are more time-sensitive
+  refetchOnWindowFocus: true,
+})
+```
+
+---
+
+### Phase 2 — Centralized Invalidation Utility + Fix All Missing Chains
+**Files:** New `client/src/lib/cacheInvalidation.ts` + all mutation `onSuccess` handlers listed in the audit above
+**Time:** 2–3 hours
+**Fixes:** Sub-problems 2 (fully), 3, 6, 7, and all 12 missing invalidations from the audit table
+
+**Step A — Create the utility**
+
+```ts
+// client/src/lib/cacheInvalidation.ts
+import type { QueryClient } from "@tanstack/react-query";
+
+export const invalidate = {
+
+  profile: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/profile"] });
+    qc.invalidateQueries({ queryKey: ["/api/profiles"], exact: false });
+  },
+
+  sessions: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/sessions"] });
+    qc.invalidateQueries({ queryKey: ["/api/profiles"], exact: false });
+  },
+
+  // The key fix for Sub-problem 3 — availability now hits the public query
+  availability: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/availability"] });
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/blocked-dates"] });
+    qc.invalidateQueries({ queryKey: ["/api/profiles"], exact: false });
+  },
+
+  events: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/events"] });
+    qc.invalidateQueries({ queryKey: ["/api/profiles"], exact: false });
+  },
+
+  products: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/products"] });
+    qc.invalidateQueries({ queryKey: ["/api/profiles"], exact: false });
+  },
+
+  blog: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/blog"] });
+    qc.invalidateQueries({ queryKey: ["/api/profiles"], exact: false });
+  },
+
+  // The key fix for Sub-problem 6 — locations now hit public profile
+  locations: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/locations"] });
+    qc.invalidateQueries({ queryKey: ["/api/profiles"], exact: false });
+  },
+
+  // The key fix for Sub-problem 7 — tags now hit public profile
+  tags: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/profile/tags"] });
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/profile/consolidated-tags"] });
+    qc.invalidateQueries({ queryKey: ["/api/profiles"], exact: false });
+  },
+
+  // The key fix for Sub-problem 4 — bookings now hit guest portal when token is available
+  bookings: (qc: QueryClient, guestAccessToken?: string) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/bookings"] });
+    if (guestAccessToken) {
+      qc.invalidateQueries({ queryKey: [`/api/guest/${guestAccessToken}`] });
+    }
+  },
+
+  wallet: (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/wallet/summary"] });
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/wallet/transactions"] });
+    qc.invalidateQueries({ queryKey: ["/api/dashboard/wallet/stripe-account"] });
+  },
+
+};
+```
+
+**Step B — Replace hardcoded invalidations in every affected mutation**
+
+Go through each of the 12 missing invalidations in the audit table above and update the `onSuccess` handler. Example for the most critical one — availability:
+
+```ts
+// Before (in combined-session-management.tsx)
+onSuccess: () => {
+  queryClient.invalidateQueries({ queryKey: ["/api/dashboard/availability"] });
+}
+
+// After
+import { invalidate } from "@/lib/cacheInvalidation";
+onSuccess: () => {
+  invalidate.availability(queryClient); // now also hits /api/profiles/{username}/availability
+}
+```
+
+Apply the same pattern to every row in the missing invalidations table. Each component imports `invalidate` from the shared utility and calls the appropriate function. No more hardcoded query key strings scattered across components.
+
+**Why this prevents future regressions:** Any new feature adds a mutation that imports from `cacheInvalidation.ts`. When a new query key is introduced in the future, it's added to the utility once. Every existing and future mutation that uses that entity automatically covers it. No developer has to remember which keys are related.
+
+---
+
+### Phase 3 — BroadcastChannel Cross-Tab Sync
+**Files:** New `client/src/lib/cacheChannel.ts` + `client/src/App.tsx` + broadcast calls in mutations
+**Time:** 2–3 hours
+**Fixes:** Scenario where the coach has the profile open in a separate browser tab while editing in the dashboard — profile tab updates automatically the moment the coach saves
+
+**Step A — Create the channel utility**
+
+```ts
+// client/src/lib/cacheChannel.ts
+import type { QueryClient } from "@tanstack/react-query";
+import { invalidate } from "./cacheInvalidation";
+
+const CHANNEL_NAME = "riplek-cache-sync";
+
+type CacheSyncEvent =
+  | { type: "profile-updated" }
+  | { type: "sessions-updated" }
+  | { type: "availability-updated" }
+  | { type: "events-updated" }
+  | { type: "products-updated" }
+  | { type: "blog-updated" }
+  | { type: "locations-updated" }
+  | { type: "tags-updated" }
+  | { type: "bookings-updated" };
+
+// Called inside mutation onSuccess — sends signal to all other open tabs
+export function broadcast(event: CacheSyncEvent): void {
+  try {
+    const ch = new BroadcastChannel(CHANNEL_NAME);
+    ch.postMessage(event);
+    ch.close();
+  } catch {
+    // BroadcastChannel not supported in this browser — silent fail, no impact
+  }
+}
+
+// Called once in App.tsx on mount — receives signals and invalidates this tab's cache
+export function listenForCacheSync(queryClient: QueryClient): () => void {
+  try {
+    const ch = new BroadcastChannel(CHANNEL_NAME);
+    ch.onmessage = ({ data }: MessageEvent<CacheSyncEvent>) => {
+      switch (data.type) {
+        case "profile-updated":      invalidate.profile(queryClient); break;
+        case "sessions-updated":     invalidate.sessions(queryClient); break;
+        case "availability-updated": invalidate.availability(queryClient); break;
+        case "events-updated":       invalidate.events(queryClient); break;
+        case "products-updated":     invalidate.products(queryClient); break;
+        case "blog-updated":         invalidate.blog(queryClient); break;
+        case "locations-updated":    invalidate.locations(queryClient); break;
+        case "tags-updated":         invalidate.tags(queryClient); break;
+        case "bookings-updated":     invalidate.bookings(queryClient); break;
+      }
+    };
+    return () => ch.close();
+  } catch {
+    return () => {}; // no-op cleanup if BroadcastChannel unsupported
+  }
+}
+```
+
+**Step B — Register the listener in App.tsx**
+
+```ts
+// client/src/App.tsx
+import { useEffect } from "react";
+import { listenForCacheSync } from "@/lib/cacheChannel";
+import { queryClient } from "@/lib/queryClient";
+
+// Inside the root App component:
+useEffect(() => {
+  const cleanup = listenForCacheSync(queryClient);
+  return cleanup;
+}, []);
+```
+
+**Step C — Pair every mutation's onSuccess with a broadcast call**
+
+```ts
+// Example — dashboard.tsx profile mutation
+import { invalidate } from "@/lib/cacheInvalidation";
+import { broadcast } from "@/lib/cacheChannel";
+
+onSuccess: () => {
+  invalidate.profile(queryClient);        // updates this tab immediately
+  broadcast({ type: "profile-updated" }); // updates all other open tabs
+}
+```
+
+Every mutation gets both calls. The `invalidate.*` call handles the current tab (fastest path). The `broadcast()` call handles every other open tab independently.
+
+**Browser support:** BroadcastChannel is supported in all modern browsers (Chrome, Firefox, Safari 15.4+, Edge). The utility wraps all calls in try/catch — older browsers silently fall back to Phase 1 + 2 behaviour with no errors and no user-facing impact.
+
+---
+
+## What Each Phase Fixes
+
+| Sub-Problem | Phase 1A | Phase 1B | Phase 2 | Phase 3 |
+|---|---|---|---|---|
+| Dashboard navigation stale | ✅ Fixed | — | — | — |
+| Content not showing on public profile after save | Partial | — | ✅ Fixed | — |
+| Availability not updating in booking flow | ✗ | — | ✅ Fixed | — |
+| Guest portal stale after coach actions | ✗ | ✅ Fixed (15s) | Partial | — |
+| Guest actions not reflecting on coach dashboard | Partial | — | — | — |
+| Locations not syncing to public profile | ✗ | — | ✅ Fixed | — |
+| Tags not syncing to public profile | ✗ | — | ✅ Fixed | — |
+| Cross-tab sync (profile in separate tab) | ✗ | — | ✗ | ✅ Fixed |
+
+After all phases, no reported stale-data issue remains and future mutations are protected from regression by the centralized utility.
+
+---
+
+## Files Touched — Complete List
+
+| File | Change | Phase |
+|---|---|---|
+| `client/src/lib/queryClient.ts` | Change staleTime to 30s, enable refetchOnWindowFocus | 1A |
+| `client/src/pages/guest-portal.tsx` | Add refetchInterval: 15s on main query and messages sub-query | 1B |
+| `client/src/lib/cacheInvalidation.ts` | **New file** — centralized invalidation utility | 2 |
+| `client/src/lib/cacheChannel.ts` | **New file** — BroadcastChannel cross-tab sync | 3 |
+| `client/src/App.tsx` | Register listenForCacheSync on mount | 3 |
+| `client/src/pages/dashboard.tsx` | Use invalidate.profile + broadcast in profile mutation | 2 + 3 |
+| `client/src/components/combined-session-management.tsx` | Fix availability invalidation, add broadcast | 2 + 3 |
+| `client/src/components/events-management.tsx` | Fix feature toggle invalidation, add broadcast | 2 + 3 |
+| `client/src/components/digital-products-management.tsx` | Fix feature toggle invalidation, add broadcast | 2 + 3 |
+| `client/src/components/blog-management.tsx` | Fix feature toggle invalidation, add broadcast | 2 + 3 |
+| `client/src/components/locations-management.tsx` | Add public profile invalidation, add broadcast | 2 + 3 |
+| `client/src/components/profile-settings.tsx` | Fix tag mutation invalidation, add broadcast | 2 + 3 |
+| `client/src/components/booking-detail.tsx` | Add guest portal invalidation on confirm/decline/verify | 2 |
+| `client/src/components/payments-management.tsx` | No changes — part of booking workflow, not a stale data concern | — |
+
+No backend changes. No new dependencies. No database migrations.

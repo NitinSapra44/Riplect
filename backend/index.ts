@@ -1,0 +1,99 @@
+import express, { type Request, Response, NextFunction } from "express";
+import { registerRoutes } from "./routes";
+import { setupVite, serveStatic, log } from "./vite";
+import { verifyAuthSchemaCompat } from "./auth/identityLinking";
+
+const app = express();
+
+// Trust proxy - Replit runs behind a reverse proxy
+app.set('trust proxy', true);
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path = req.path;
+  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+
+  const originalResJson = res.json;
+  res.json = function(bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (path.startsWith("/api")) {
+      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      if (capturedJsonResponse) {
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      }
+
+      if (logLine.length > 80) {
+        logLine = logLine.slice(0, 79) + "…";
+      }
+
+      log(logLine);
+    }
+  });
+
+  next();
+});
+
+(async () => {
+  // Verify Supabase's auth schema still has the columns we depend on
+  // before we accept any requests. If it doesn't, fail loud in
+  // production rather than risk corrupting auth.users / auth.identities.
+  try {
+    const report = await verifyAuthSchemaCompat();
+    if (!report.ok) {
+      const detail = report.missing
+        .map((m) => `${m.table}.${m.column}`)
+        .join(", ");
+      const msg = `[auth-schema] Required Supabase auth columns are missing: ${detail}.`;
+      if (process.env.NODE_ENV === "production") {
+        console.error(msg);
+        throw new Error(msg);
+      } else {
+        console.warn(`${msg} (continuing in non-production)`);
+      }
+    } else {
+      log("auth schema compatibility check passed");
+    }
+  } catch (probeErr: any) {
+    if (process.env.NODE_ENV === "production") throw probeErr;
+    console.warn("[auth-schema] probe failed (continuing in non-production):", probeErr?.message ?? probeErr);
+  }
+
+  const server = await registerRoutes(app);
+
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+
+    res.status(status).json({ message });
+    throw err;
+  });
+
+  // importantly only setup vite in development and after
+  // setting up all the other routes so the catch-all route
+  // doesn't interfere with the other routes
+  if (app.get("env") === "development") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
+
+  // In development, port 5000 is the only non-firewalled port.
+  // In production (Cloud Run / autoscale), the deployer sets PORT to match
+  // the local port mapped to external port 80, so we respect that env var.
+  const port = parseInt(process.env.PORT || "5000");
+  server.listen({
+    port,
+    host: "0.0.0.0",
+    reusePort: process.env.MACOS_NO_REUSE_PORT ? false : true,
+  }, () => {
+    log(`serving on port ${port}`);
+  });
+})();
